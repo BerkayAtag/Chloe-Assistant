@@ -1,0 +1,596 @@
+'use client';
+/* Web Speech API tarayıcı tarafında tam tiplenmediği için bu dosyada any'ye izin verilir. */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { settingsForRequest, type Settings } from '@/lib/settings';
+import { splitSpeechText } from '@/lib/speech-text';
+
+interface UseVoiceOptions {
+  lang?: string;
+  onPartial?: (text: string) => void;
+  settings?: Settings;
+}
+
+export type FemaleSpeechVoice = {
+  voiceURI: string;
+  name: string;
+  lang: string;
+};
+
+const FEMALE_VOICE_NAME = /\b(female|woman|girl|kadın|samantha|ava|allison|susan|zoe|victoria|karen|moira|tessa|fiona|veena|zira|jenny|aria|sonia|hazel|eva|heera|sara|katja|helena|yelda|filiz|seda|zeynep|selin|ece|defne|emel|aylin|meltem|burcu|gül|gul|elif|dilara|esra|nil|özge|ozge|ipek|ipek|şebnem|sebnem|leyla|leila|yasemin|merve|ayşe|ayse|gizem|bahar|damla|derya|melisa|nehir|tuğçe|tugce)\b/iu;
+
+type RecognitionLike = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onerror: ((e: any) => void) | null;
+  onresult: ((e: any) => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+/**
+ * Web Speech API tabanlı sesli iletişim (STT + TTS) hook'u.
+ * Mikrofon iznini yönetir, konuşmayı metne çevirir ve yanıtları sesli okur.
+ */
+export function useVoice({ lang = 'tr-TR', onPartial, settings }: UseVoiceOptions = {}) {
+  const [isListening, setIsListening] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isPreparingSpeech, setIsPreparingSpeech] = useState(false);
+  const [speechIsOnDevice, setSpeechIsOnDevice] = useState<boolean | null>(null);
+  const [sttSupported] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      ('SpeechRecognition' in window ||
+        'webkitSpeechRecognition' in window ||
+        Boolean((window as any).webkit?.messageHandlers?.chloeMac))
+  );
+  const [ttsSupported] = useState(
+    () => typeof window !== 'undefined' && ('speechSynthesis' in window || Boolean((window as any).webkit?.messageHandlers?.chloeMac))
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [femaleVoices, setFemaleVoices] = useState<FemaleSpeechVoice[]>([]);
+
+  const recognitionRef = useRef<RecognitionLike | null>(null);
+  const recognitionStartTimerRef = useRef<number | null>(null);
+  const nativeSpeechActiveRef = useRef(false);
+  const sttCallbackRef = useRef<(text: string) => void>(() => {});
+  const finalCallbackRef = useRef<((text: string) => void) | null>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const voiceRequestRef = useRef<{ id: string; onEnd?: () => void } | null>(null);
+  const voiceSequenceRef = useRef(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+  const audioControllerRef = useRef<AbortController | null>(null);
+  const nativeDictationStartTimerRef = useRef<number | null>(null);
+  const nativeSpeechStartTimerRef = useRef<number | null>(null);
+  const clearRecognitionStartTimer = useCallback(() => {
+    if (recognitionStartTimerRef.current !== null) {
+      window.clearTimeout(recognitionStartTimerRef.current);
+      recognitionStartTimerRef.current = null;
+    }
+  }, []);
+  const clearNativeDictationStartTimer = useCallback(() => {
+    if (nativeDictationStartTimerRef.current !== null) {
+      window.clearTimeout(nativeDictationStartTimerRef.current);
+      nativeDictationStartTimerRef.current = null;
+    }
+  }, []);
+  const clearNativeSpeechStartTimer = useCallback(() => {
+    if (nativeSpeechStartTimerRef.current !== null) {
+      window.clearTimeout(nativeSpeechStartTimerRef.current);
+      nativeSpeechStartTimerRef.current = null;
+    }
+  }, []);
+  const clearAudio = useCallback(() => {
+    audioControllerRef.current?.abort(); audioControllerRef.current = null;
+    if (audioRef.current) { audioRef.current.onended = null; audioRef.current.onerror = null; audioRef.current.pause(); audioRef.current.src = ''; audioRef.current = null; }
+    if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+    audioUrlRef.current = null;
+  }, []);
+  useEffect(() => () => { clearAudio(); try { recognitionRef.current?.stop(); } catch { /* Already stopped by the browser. */ } }, [clearAudio]);
+
+  useEffect(() => {
+    const handler = (window as any).webkit?.messageHandlers?.chloeMac;
+    if (!handler) return;
+    const onVoice = (event: Event) => {
+      const detail = (event as CustomEvent<{ id?: string; voices?: FemaleSpeechVoice[]; started?: boolean; finished?: boolean; stopped?: boolean; error?: string }>).detail;
+      if (Array.isArray(detail?.voices)) setFemaleVoices(detail.voices);
+      if (!detail?.id || detail.id !== voiceRequestRef.current?.id) return;
+      if (detail.started) {
+        clearNativeSpeechStartTimer();
+        setIsPreparingSpeech(false);
+        setIsSpeaking(true);
+      }
+      if (detail.error || detail.finished || detail.stopped) {
+        clearNativeSpeechStartTimer();
+        setIsPreparingSpeech(false);
+        setIsSpeaking(false);
+        const callback = voiceRequestRef.current.onEnd;
+        voiceRequestRef.current = null;
+        if (detail.error) setError(detail.error);
+        if (detail.finished) callback?.();
+      }
+    };
+    window.addEventListener('chloeNativeVoice', onVoice);
+    handler.postMessage({ action: 'getSpeechVoices' });
+    return () => {
+      voiceRequestRef.current = null;
+      handler.postMessage({ action: 'stopSpeaking' });
+      window.removeEventListener('chloeNativeVoice', onVoice);
+    };
+  }, [clearNativeSpeechStartTimer]);
+
+  // STT callback'ini güncel tut
+  useEffect(() => {
+    sttCallbackRef.current = onPartial || (() => {});
+  }, [onPartial]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onNativeSpeech = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        text?: string;
+        final?: boolean;
+        error?: string;
+        starting?: boolean;
+        started?: boolean;
+        stopped?: boolean;
+        onDevice?: boolean;
+      }>).detail;
+      if (detail?.error) {
+        clearNativeDictationStartTimer();
+        setError(detail.error);
+        setIsStarting(false);
+        setIsListening(false);
+        setSpeechIsOnDevice(null);
+        nativeSpeechActiveRef.current = false;
+        finalCallbackRef.current = null;
+        return;
+      }
+      if (detail?.starting) {
+        setIsStarting(true);
+        setIsListening(false);
+        setSpeechIsOnDevice(null);
+        nativeSpeechActiveRef.current = true;
+      }
+      if (detail?.started) {
+        clearNativeDictationStartTimer();
+        setIsStarting(false);
+        setIsListening(true);
+        setSpeechIsOnDevice(typeof detail.onDevice === 'boolean' ? detail.onDevice : null);
+        setError(null);
+        nativeSpeechActiveRef.current = true;
+      }
+      if (detail?.stopped) {
+        clearNativeDictationStartTimer();
+        setIsStarting(false);
+        setIsListening(false);
+        setSpeechIsOnDevice(null);
+        nativeSpeechActiveRef.current = false;
+        finalCallbackRef.current = null;
+      }
+      if (!detail?.text) return;
+      sttCallbackRef.current(detail.text);
+      if (detail.final) {
+        clearNativeDictationStartTimer();
+        finalCallbackRef.current?.(detail.text.trim());
+        finalCallbackRef.current = null;
+        setIsStarting(false);
+        setIsListening(false);
+        nativeSpeechActiveRef.current = false;
+      }
+    };
+    window.addEventListener('chloeNativeSpeechResult', onNativeSpeech);
+    return () => window.removeEventListener('chloeNativeSpeechResult', onNativeSpeech);
+  }, [clearNativeDictationStartTimer]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    if ((window as any).webkit?.messageHandlers?.chloeMac) return;
+    const updateVoices = () => {
+      setFemaleVoices(
+        window.speechSynthesis.getVoices()
+          .filter((voice) => voice.lang.toLowerCase().startsWith('tr') && FEMALE_VOICE_NAME.test(voice.name))
+          .map(({ voiceURI, name, lang }) => ({ voiceURI, name, lang }))
+          .sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+      );
+    };
+    updateVoices();
+    window.speechSynthesis.addEventListener('voiceschanged', updateVoices);
+    return () => window.speechSynthesis.removeEventListener('voiceschanged', updateVoices);
+  }, []);
+
+  const startListening = useCallback(
+    (onFinal: (text: string) => void) => {
+      if (typeof window === 'undefined') return;
+      const nativeSpeech = (window as any).webkit?.messageHandlers?.chloeMac;
+      if (nativeSpeech) {
+        if (nativeSpeechActiveRef.current) return;
+        nativeSpeechActiveRef.current = true;
+        finalCallbackRef.current = onFinal;
+        setIsStarting(true);
+        setIsListening(false);
+        setSpeechIsOnDevice(null);
+        setError(null);
+        nativeDictationStartTimerRef.current = window.setTimeout(() => {
+          if (!nativeSpeechActiveRef.current) return;
+          nativeSpeechActiveRef.current = false;
+          nativeDictationStartTimerRef.current = null;
+          finalCallbackRef.current = null;
+          setIsStarting(false);
+          setIsListening(false);
+          setError('macOS konuşma tanıma başlatılamadı. Mikrofon iznini ve seçili dili kontrol et.');
+        }, 45000);
+        try {
+          nativeSpeech.postMessage({ action: 'startDictation' });
+        } catch (cause: unknown) {
+          clearNativeDictationStartTimer();
+          nativeSpeechActiveRef.current = false;
+          finalCallbackRef.current = null;
+          setIsStarting(false);
+          setError(cause instanceof Error ? cause.message : 'macOS sesli dikte başlatılamadı.');
+        }
+        return;
+      }
+      if (recognitionRef.current) return;
+      const SR =
+        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SR) {
+        setIsStarting(false);
+        setError('Bu tarayıcı konuşma tanımayı desteklemiyor.');
+        return;
+      }
+
+      let rec: RecognitionLike;
+      try {
+        rec = new SR();
+      } catch (cause: unknown) {
+        setIsStarting(false);
+        setError(cause instanceof Error ? `Ses tanıma başlatılamadı: ${cause.message}` : 'Ses tanıma başlatılamadı.');
+        return;
+      }
+      recognitionRef.current = rec;
+      let delivered = false;
+      rec.lang = lang;
+      rec.continuous = false;
+      rec.interimResults = true;
+
+      rec.onstart = () => {
+        if (recognitionRef.current !== rec) return;
+        clearRecognitionStartTimer();
+        setIsStarting(false);
+        setIsListening(true);
+        setSpeechIsOnDevice(null);
+        setError(null);
+      };
+
+      rec.onresult = (event: any) => {
+        if (recognitionRef.current !== rec || delivered) return;
+        let finalText = '';
+        let interimText = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const r = event.results[i];
+          if (r.isFinal) finalText += r[0].transcript;
+          else interimText += r[0].transcript;
+        }
+        if (interimText) sttCallbackRef.current(interimText);
+        if (finalText.trim()) {
+          delivered = true;
+          rec.stop();
+          onFinal(finalText.trim());
+        }
+      };
+
+      rec.onerror = (e: any) => {
+        if (recognitionRef.current !== rec) return;
+        clearRecognitionStartTimer();
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+          setError('Mikrofon izni reddedildi. Tarayıcı ayarlarından izin verin.');
+        } else if (e.error !== 'aborted' && e.error !== 'no-speech') {
+          setError(`Ses hatası: ${e.error}`);
+        }
+        setIsStarting(false);
+        setIsListening(false);
+      };
+
+      rec.onend = () => {
+        if (recognitionRef.current !== rec) return;
+        clearRecognitionStartTimer();
+        setIsStarting(false);
+        setIsListening(false);
+        if (recognitionRef.current === rec) recognitionRef.current = null;
+      };
+
+      try {
+        setIsStarting(true);
+        recognitionStartTimerRef.current = window.setTimeout(() => {
+          if (recognitionRef.current !== rec) return;
+          recognitionRef.current = null;
+          recognitionStartTimerRef.current = null;
+          try { rec.stop(); } catch { /* The recognizer may not have started. */ }
+          setIsStarting(false);
+          setIsListening(false);
+          setError('Tarayıcı mikrofonu başlatamadı. Mikrofon iznini ve ses giriş aygıtını kontrol et.');
+        }, 15000);
+        rec.start();
+      } catch (cause: unknown) {
+        clearRecognitionStartTimer();
+        recognitionRef.current = null;
+        setIsStarting(false);
+        setIsListening(false);
+        setError(cause instanceof Error ? `Mikrofon başlatılamadı: ${cause.message}` : 'Mikrofon başlatılamadı.');
+      }
+    },
+    [lang, clearNativeDictationStartTimer, clearRecognitionStartTimer]
+  );
+
+  const stopListening = useCallback(() => {
+    clearRecognitionStartTimer();
+    clearNativeDictationStartTimer();
+    const nativeSpeech = typeof window !== 'undefined'
+      ? (window as any).webkit?.messageHandlers?.chloeMac
+      : null;
+    try {
+      nativeSpeech?.postMessage({ action: 'stopDictation' });
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : 'Mikrofon durdurulamadı.');
+    }
+    const recognition = recognitionRef.current;
+    // Invalidate first: browsers may deliver a final result after stop().
+    recognitionRef.current = null;
+    nativeSpeechActiveRef.current = false;
+    try { recognition?.stop(); } catch { /* Already stopped. */ }
+    finalCallbackRef.current = null;
+    setIsStarting(false);
+    setIsListening(false);
+    sttCallbackRef.current('');
+  }, [clearNativeDictationStartTimer, clearRecognitionStartTimer]);
+
+  const openPrivacySettings = useCallback((kind: 'speech' | 'microphone') => {
+    const nativeSpeech = typeof window !== 'undefined'
+      ? (window as any).webkit?.messageHandlers?.chloeMac
+      : null;
+    if (!nativeSpeech) {
+      setError(kind === 'microphone'
+        ? 'Tarayıcının adres çubuğundaki site ayarlarından mikrofon izni ver.'
+        : 'macOS Sistem Ayarları > Gizlilik ve Güvenlik > Konuşma Tanıma bölümünden izin ver.');
+      return;
+    }
+    try {
+      nativeSpeech.postMessage({
+        action: kind === 'microphone' ? 'openMicrophoneSettings' : 'openSpeechSettings',
+      });
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : 'Gizlilik ayarları açılamadı.');
+    }
+  }, []);
+
+  const speak = useCallback(
+    (text: string, opts?: { rate?: number; pitch?: number; voiceURI?: string; onEnd?: () => void }) => {
+      if (typeof window === 'undefined' || !text.trim()) return;
+      stopListening();
+      clearAudio();
+      voiceRequestRef.current = null;
+      utteranceRef.current = null;
+      const native = (window as any).webkit?.messageHandlers?.chloeMac;
+      setError(null);
+      if (settings && settings.jarvisSpeechEngine !== 'device') {
+        native?.postMessage({ action: 'stopSpeaking' });
+        window.speechSynthesis?.cancel();
+        const controller = new AbortController(); audioControllerRef.current = controller;
+        setIsPreparingSpeech(true); setIsSpeaking(false);
+        const clean = text.replace(/```[\s\S]*?```/g, ' Kod örneğini ekranda görebilirsin. ').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/https?:\/\/\S+/g, '').replace(/[*#`_]/g, '').trim();
+        const chunks = splitSpeechText(clean);
+        if (!chunks.length) {
+          clearAudio();
+          setIsPreparingSpeech(false);
+          return;
+        }
+        const isCurrentRequest = () => audioControllerRef.current === controller && !controller.signal.aborted;
+        const fail = (cause: unknown) => {
+          if (!isCurrentRequest()) return;
+          clearAudio();
+          setIsSpeaking(false);
+          setIsPreparingSpeech(false);
+          setError(cause instanceof Error ? cause.message : 'Doğal ses üretilemedi.');
+        };
+        const playChunk = async (index: number): Promise<void> => {
+          if (!isCurrentRequest()) return;
+          if (index >= chunks.length) {
+            clearAudio();
+            setIsSpeaking(false);
+            setIsPreparingSpeech(false);
+            opts?.onEnd?.();
+            return;
+          }
+          try {
+            const response = await fetch('/api/voice', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              signal: controller.signal,
+              body: JSON.stringify({
+                text: chunks[index],
+                voice: settings.jarvisCloudVoice,
+                tone: settings.jarvisVoiceTone,
+                settings: settingsForRequest(settings),
+              }),
+            });
+            if (!response.ok) {
+              const data = await response.json();
+              throw new Error(data.error || 'Ses üretilemedi.');
+            }
+            const blob = await response.blob();
+            if (!isCurrentRequest()) return;
+            const url = URL.createObjectURL(blob);
+            audioUrlRef.current = url;
+            const audio = new Audio(url);
+            audioRef.current = audio;
+            audio.onended = () => {
+              if (!isCurrentRequest() || audioRef.current !== audio) return;
+              audio.onended = null;
+              audio.onerror = null;
+              audio.pause();
+              audio.src = '';
+              audioRef.current = null;
+              if (audioUrlRef.current === url) {
+                URL.revokeObjectURL(url);
+                audioUrlRef.current = null;
+              }
+              setIsSpeaking(false);
+              setIsPreparingSpeech(index + 1 < chunks.length);
+              void playChunk(index + 1);
+            };
+            audio.onerror = () => {
+              if (audioRef.current !== audio) return;
+              fail(new Error('Üretilen ses oynatılamadı. Sesi dene düğmesine dokunarak tekrar dene.'));
+            };
+            await audio.play();
+            if (isCurrentRequest() && audioRef.current === audio) {
+              setIsPreparingSpeech(false);
+              setIsSpeaking(true);
+            }
+          } catch (cause: unknown) {
+            fail(cause);
+          }
+        };
+        void playChunk(0);
+        return;
+      }
+      setIsPreparingSpeech(false);
+      if (native) {
+        const id = `voice-${++voiceSequenceRef.current}`;
+        voiceRequestRef.current = { id, onEnd: opts?.onEnd };
+        setIsPreparingSpeech(true);
+        setIsSpeaking(false);
+        nativeSpeechStartTimerRef.current = window.setTimeout(() => {
+          if (voiceRequestRef.current?.id !== id) return;
+          voiceRequestRef.current = null;
+          nativeSpeechStartTimerRef.current = null;
+          setIsPreparingSpeech(false);
+          setIsSpeaking(false);
+          setError('macOS sesli yanıtı başlatamadı. Cihaz sesini veya başka bir Türkçe kadın sesini dene.');
+        }, 15000);
+        try {
+          native.postMessage({ action: 'speakText', command: text, url: opts?.voiceURI, speechId: id, rate: opts?.rate, pitch: opts?.pitch });
+        } catch (cause) {
+          clearNativeSpeechStartTimer();
+          voiceRequestRef.current = null;
+          setIsPreparingSpeech(false);
+          setIsSpeaking(false);
+          setError(cause instanceof Error ? cause.message : 'Sesli yanıt başlatılamadı.');
+        }
+        return;
+      }
+      if (!('speechSynthesis' in window)) {
+        setError('Bu tarayıcı sesli yanıtı desteklemiyor.');
+        return;
+      }
+      window.speechSynthesis.cancel();
+
+      const available = window.speechSynthesis.getVoices()
+        .filter((voice) => voice.lang.toLowerCase().startsWith('tr') && FEMALE_VOICE_NAME.test(voice.name));
+      const selectedVoice = available.find((voice) => voice.voiceURI === opts?.voiceURI) || available[0];
+      if (!selectedVoice) {
+        setError('Cihazda tanınan bir Türkçe kadın sesi yok. İşletim sistemi ayarlarından Türkçe kadın sesi ekleyip JARVIS’i yeniden aç.');
+        setIsSpeaking(false);
+        setIsPreparingSpeech(false);
+        return;
+      }
+      const utter = new SpeechSynthesisUtterance(text);
+      utteranceRef.current = utter;
+      setIsPreparingSpeech(true);
+      setIsSpeaking(false);
+      utter.lang = lang;
+      utter.voice = selectedVoice;
+      utter.rate = opts?.rate ?? 0.96;
+      utter.pitch = opts?.pitch ?? 1;
+
+      nativeSpeechStartTimerRef.current = window.setTimeout(() => {
+        if (utteranceRef.current !== utter) return;
+        utteranceRef.current = null;
+        nativeSpeechStartTimerRef.current = null;
+        setIsPreparingSpeech(false);
+        setIsSpeaking(false);
+        setError('Cihaz sesli yanıtı başlatamadı. Başka bir Türkçe kadın sesi veya ana API sesini dene.');
+      }, 15000);
+      utter.onstart = () => {
+        if (utteranceRef.current !== utter) return;
+        clearNativeSpeechStartTimer();
+        setIsPreparingSpeech(false);
+        setIsSpeaking(true);
+      };
+      utter.onend = () => {
+        if (utteranceRef.current !== utter) return;
+        clearNativeSpeechStartTimer();
+        utteranceRef.current = null;
+        setIsPreparingSpeech(false);
+        setIsSpeaking(false);
+        opts?.onEnd?.();
+      };
+      utter.onerror = (event) => {
+        if (utteranceRef.current !== utter) return;
+        clearNativeSpeechStartTimer();
+        utteranceRef.current = null;
+        setIsPreparingSpeech(false);
+        setIsSpeaking(false);
+        setError(`Sesli yanıt oynatılamadı: ${event.error}. Ses çıkışını ve yüklü Türkçe sesi kontrol et.`);
+      };
+
+      try {
+        window.speechSynthesis.speak(utter);
+      } catch (cause: unknown) {
+        clearNativeSpeechStartTimer();
+        utteranceRef.current = null;
+        setIsPreparingSpeech(false);
+        setIsSpeaking(false);
+        setError(cause instanceof Error ? `Sesli yanıt başlatılamadı: ${cause.message}` : 'Sesli yanıt başlatılamadı.');
+      }
+    },
+    [lang, settings, clearAudio, clearNativeSpeechStartTimer, stopListening]
+  );
+
+  const stopSpeaking = useCallback(() => {
+    clearAudio(); setIsPreparingSpeech(false);
+    clearNativeSpeechStartTimer();
+    voiceRequestRef.current = null;
+    utteranceRef.current = null;
+    const native = typeof window !== 'undefined' && (window as any).webkit?.messageHandlers?.chloeMac;
+    if (native) native.postMessage({ action: 'stopSpeaking' });
+    setIsSpeaking(false);
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+    }
+  }, [clearAudio, clearNativeSpeechStartTimer]);
+
+  // A provider/key change must not continue playing the previous provider's
+  // in-flight response or unexpectedly restart its microphone loop.
+  useEffect(() => () => { stopSpeaking(); stopListening(); }, [
+    settings?.provider, settings?.cloudProvider, settings?.apiKey, settings?.apiBaseUrl,
+    settings?.cloudModel, settings?.customModel, settings?.jarvisSpeechEngine,
+    settings?.customSpeechModel, settings?.customSpeechVoice, stopSpeaking, stopListening,
+  ]);
+
+  return {
+    isListening,
+    isStarting,
+    isSpeaking,
+    isPreparingSpeech,
+    speechIsOnDevice,
+    sttSupported,
+    ttsSupported,
+    femaleVoices,
+    error,
+    clearError: () => setError(null),
+    startListening,
+    stopListening,
+    openPrivacySettings,
+    speak,
+    stopSpeaking,
+  };
+}

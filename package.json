@@ -1,0 +1,42 @@
+{
+  "name": "chloe-assistant",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "test:runtime": "node --experimental-strip-types --test script/runtime.test.mjs",
+    "test:voice-ui": "node --test script/voice-ui.test.mjs",
+    "test:connections": "node --experimental-strip-types --test script/connections.test.mjs script/settings-client.test.mjs script/oauth-setup.test.mjs",
+    "test:office": "node script/office-qa.mjs",
+    "test:skills": "node --experimental-strip-types --test script/skills.test.mjs",
+    "test:codex": "node --experimental-strip-types --test script/codex-workspace.test.mjs"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.75",
+    "@ai-sdk/google": "^4.0.90",
+    "@ai-sdk/openai": "^4.0.87",
+    "@ai-sdk/react": "^4.0.134",
+    "ai": "^7.0.131",
+    "duckduckgo-search-api": "^1.0.5",
+    "framer-motion": "^14.0.0",
+    "lucide-react": "^1.52.0",
+    "next": "16.4.0",
+    "pdf-parse": "^2.4.5",
+    "playwright": "^1.63.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
