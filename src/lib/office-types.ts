@@ -4,13 +4,15 @@ export interface OfficeAgent {
   id: string; name: string; role: AgentRole; provider: AgentProvider; model: string;
   baseUrl: string; instructions: string; enabled: boolean; hasKey?: boolean; apiKey?: string; supportsTools?: boolean;
   skillIds?: string[];
+  skillPresetVersion?: number;
 }
 export interface OfficeTask {
   id: string; agentId: string; title: string; instructions: string; dependsOn: string[];
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'; output: string; error?: string;
 }
-export interface OfficeArtifact { id: string; path: string; content: string; originalHash: string; applied: boolean }
+export interface OfficeArtifact { id: string; path: string; content: string; originalHash: string; applied: boolean; review?: { verdict: 'approved' | 'changes_requested'; summary: string; reviewedHash: string; at: string; testsExecuted: false } }
 export interface OfficeRun {
+  focusFile?: string;
   id: string; prompt: string; workspace: string; status: 'planning' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted';
   createdAt: string; updatedAt: string; tasks: OfficeTask[]; result: string; error?: string;
   events: { at: string; agent: string; message: string }[]; tokens: number; calls: number; artifacts: OfficeArtifact[];

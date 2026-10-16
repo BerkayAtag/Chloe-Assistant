@@ -31,6 +31,10 @@ import { useVoice } from '@/hooks/useVoice';
 import { useSettings, retrySettings } from '@/hooks/useSettings';
 import { modelLabel, settingsForRequest, updateProviderSettings, type Settings } from '@/lib/settings';
 import { sendNativeAction } from '@/lib/native-bridge';
+import { JarvisEventDecoder, type JarvisEvent } from '@/lib/jarvis-protocol';
+import { useJarvisWork } from '@/hooks/useJarvisWork';
+import JarvisWorkPanel from '@/components/JarvisWorkPanel';
+import { jarvisModelSettings } from '@/lib/jarvis-model';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -90,6 +94,8 @@ export default function Home() {
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [officeOpen, setOfficeOpen] = useState(false);
+  const [officeContext, setOfficeContext] = useState({ runId: '', workspace: '' });
+  const [jarvisTiming, setJarvisTiming] = useState<{ firstTokenMs?: number; totalMs?: number; audioStartMs?: number; servedModel?: string }>({});
 
   const [input, setInput] = useState('');
   const [listeningText, setListeningText] = useState('');
@@ -120,6 +126,7 @@ export default function Home() {
     onPartial: (text) => setListeningText(text),
   });
   const { startListening, sttSupported, error: voiceError } = voice;
+  const jarvisWork = useJarvisWork(settings, settings.jarvisMode && !officeOpen);
 
   // Sunucudan kimliği senkronla (asistan/kullanıcı adı araçlarla değişebilir)
   useEffect(() => {
@@ -221,9 +228,19 @@ export default function Home() {
   const sendMessage = useCallback(
     async (text: string, forceJarvisMode = false) => {
       const clean = text.trim();
-      if ((!clean && attachments.length === 0) || isLoading || isGenerating) return;
+      if ((!clean && attachments.length === 0) || isLoading || isGenerating || requestControllerRef.current) return;
       const jarvisRequest = settings.jarvisMode || forceJarvisMode;
-      if (jarvisRequest) { voice.stopListening(); voice.stopSpeaking(); }
+      if (jarvisRequest) { voice.stopListening(); voice.stopSpeaking(); setResumeJarvisListening(false); setJarvisTiming({}); }
+      if (jarvisRequest) {
+        const notice = jarvisWork.route(clean);
+        if (notice) {
+          setInput(''); setListeningText(''); setErrorDetail(null);
+          setMessages((previous) => [...previous, { role: 'user', content: clean }, { role: 'assistant', content: notice }]);
+          if (speakEnabled) voice.speak(notice, { onEnd: () => setResumeJarvisListening(true) });
+          else if (jarvisHandsFree) setResumeJarvisListening(true);
+          return;
+        }
+      }
       if (!jarvisRequest && (selectedTool === 'image' || selectedTool === 'video')) {
         if (!clean) return;
         if (await generateMedia(clean)) setInput('');
@@ -303,6 +320,8 @@ export default function Home() {
       setIsResearching(needsDetailedResearch(clean));
       const controller = new AbortController();
       requestControllerRef.current = controller;
+      const turnStarted = performance.now();
+      let speechStream: ReturnType<typeof voice.beginSpeechStream> = null;
 
       let convId = activeConversationId;
       try {
@@ -338,6 +357,7 @@ export default function Home() {
             messages: newMessages,
             settings: settingsForRequest(settings, forceJarvisMode ? { jarvisMode: true } : {}),
             conversationId: convId,
+            ...(jarvisRequest ? { streamProtocol: 'jarvis-v1' } : {}),
           }),
           signal: AbortSignal.any([controller.signal, AbortSignal.timeout(needsDetailedResearch(clean) ? 300_000 : 60_000)]),
         });
@@ -355,16 +375,41 @@ export default function Home() {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let assistantMsg = '';
+        const protocol = jarvisRequest && res.headers.get('content-type')?.includes('application/x-ndjson');
+        const events = new JarvisEventDecoder();
+        let streamFinished = false;
+        if (jarvisRequest && speakEnabled) {
+          speechStream = voice.beginSpeechStream({
+            onStart: () => setJarvisTiming((previous) => ({ ...previous, audioStartMs: Math.round(performance.now() - turnStarted) })),
+            onEnd: () => setResumeJarvisListening(true),
+          });
+        }
+        const append = (text: string) => {
+          assistantMsg += text;
+          speechStream?.push(text);
+          setMessages([...newMessages, { role: 'assistant', content: assistantMsg }]);
+        };
+        const receive = (event: JarvisEvent) => {
+          if (event.type === 'text') append(event.text);
+          if (event.type === 'error') throw new Error(event.message);
+          if (event.type === 'routing') setJarvisTiming((previous) => ({ ...previous, servedModel: event.servedModel }));
+          if (event.type === 'timing') setJarvisTiming((previous) => ({ ...previous, firstTokenMs: event.firstTokenMs ?? undefined, totalMs: event.totalMs }));
+          if (event.type === 'done') streamFinished = true;
+        };
 
         setMessages([...newMessages, { role: 'assistant', content: '' }]);
 
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
-          assistantMsg += decoder.decode(value, { stream: true });
-          setMessages([...newMessages, { role: 'assistant', content: assistantMsg }]);
+          const part = decoder.decode(value, { stream: true });
+          if (protocol) events.push(part).forEach(receive);
+          else append(part);
         }
-        assistantMsg += decoder.decode(); // kalan byte'ları boşalt
+        if (protocol) {
+          events.push(decoder.decode(), true).forEach(receive);
+          if (!streamFinished) throw new Error('Yanıt akışı tamamlanmadan kesildi. Kısmi yanıt ekranda; yeniden deneyebilirsin.');
+        } else append(decoder.decode());
         if (!assistantMsg.trim()) {
           setMessages(newMessages);
           throw new Error('Model boş yanıt verdi. Model bağlantısını Ayarlar bölümünden test et.');
@@ -378,10 +423,13 @@ export default function Home() {
             .trim();
           setMessages(newMessages);
           setErrorDetail(detail || 'Model yanıtı üretilemedi.');
+          voice.stopSpeaking();
           return;
         }
 
-        if (speakEnabled && assistantMsg.trim()) {
+        if (speechStream) {
+          speechStream.finish();
+        } else if (speakEnabled && assistantMsg.trim()) {
           if (settings.jarvisMode || forceJarvisMode) {
             const tone = settings.jarvisVoiceTone;
             voice.speak(assistantMsg, {
@@ -403,6 +451,7 @@ export default function Home() {
         window.dispatchEvent(new Event('refreshExpertise'));
         window.dispatchEvent(new Event('refreshConversations'));
       } catch (err: unknown) {
+        if (jarvisRequest) voice.stopSpeaking();
         if (err instanceof Error && err.name === 'TimeoutError') {
           setErrorDetail('Model zaman aşımına uğradı. Ayarlar bölümünden bağlantıyı test et; detaylı araştırma dışındaki isteklerde bekleme süresi 60 saniyedir.');
           setMessages((previous) => previous.filter((message, index) => !(index === previous.length - 1 && message.role === 'assistant' && !message.content)));
@@ -436,6 +485,7 @@ export default function Home() {
       selectedTool,
       generateMedia,
       voice,
+      jarvisWork,
       refreshAvatar,
       syncIdentity,
     ]
@@ -574,6 +624,7 @@ export default function Home() {
 
   useEffect(() => {
     if (officeOpen || !settings.jarvisMode || !jarvisHandsFree || !resumeJarvisListening || isLoading) return;
+    if (voice.isSpeaking || voice.isPreparingSpeech || voice.isListening || voice.isStarting) return;
     if (voiceError || !sttSupported) {
       const timer = window.setTimeout(() => setResumeJarvisListening(false), 0);
       return () => window.clearTimeout(timer);
@@ -596,6 +647,7 @@ export default function Home() {
     startListening,
     sttSupported,
     voiceError,
+    voice.isSpeaking, voice.isPreparingSpeech, voice.isListening, voice.isStarting,
   ]);
 
   const cancelResponse = () => {
@@ -677,13 +729,14 @@ export default function Home() {
       {connectionStorage.state === 'error' && <div role="alert" className="fixed top-2 left-1/2 z-[110] w-[min(94vw,640px)] -translate-x-1/2 rounded-xl border border-app-danger bg-app-surface p-3 text-sm text-app-danger">
         Bağlantı kaydı: {connectionStorage.message} <button className="underline" onClick={() => void retrySettings()}>Yeniden dene</button>
       </div>}
-      {officeOpen ? <AgentOffice settings={settings} onClose={() => { setOfficeOpen(false); setSettings((previous) => ({ ...previous, jarvisMode: false })); }} onJarvis={() => { setOfficeOpen(false); if (!settings.jarvisMode) toggleJarvisMode(); }}/> : selectedTool === 'codex' && !settings.jarvisMode ? (
-        <CodeWorkspace settings={settings} onClose={clearSelectedTool} onOpenSettings={() => setIsSettingsOpen(true)} />
-      ) : settings.jarvisMode ? (
+      {selectedTool === 'codex' && !settings.jarvisMode && <div className={officeOpen ? 'hidden' : 'flex min-w-0 flex-1'}>
+        <CodeWorkspace settings={settings} onClose={clearSelectedTool} onOpenSettings={() => setIsSettingsOpen(true)} onOpenOffice={(runId, workspace) => { setOfficeContext({ runId, workspace }); setOfficeOpen(true); }}/>
+      </div>}
+      {officeOpen ? <AgentOffice settings={settings} initialRunId={officeContext.runId} initialWorkspace={officeContext.workspace} returnToCode={selectedTool === 'codex'} onClose={() => { setOfficeOpen(false); setSettings((previous) => ({ ...previous, jarvisMode: false })); }} onJarvis={() => { setOfficeOpen(false); if (!settings.jarvisMode) toggleJarvisMode(); }}/> : selectedTool === 'codex' && !settings.jarvisMode ? null : settings.jarvisMode ? (
         <JarvisConsole
           settings={settings}
           assistantName={settings.assistantName || 'Chloe'}
-          modelName={modelLabel(settings)}
+          modelName={modelLabel(jarvisModelSettings(settings))}
           isListening={voice.isListening}
           isStarting={voice.isStarting}
           isSpeaking={voice.isSpeaking}
@@ -699,6 +752,12 @@ export default function Home() {
           onCancel={cancelResponse}
           onSettingsChange={(patch) => setSettings((previous) => updateProviderSettings(previous, patch))}
           onOpenOffice={() => { cancelResponse(); setOfficeOpen(true); }}
+          timing={jarvisTiming}
+          workPanel={<JarvisWorkPanel
+            work={jarvisWork}
+            onOpenOffice={(runId, workspace) => { cancelResponse(); setOfficeContext({ runId, workspace }); setOfficeOpen(true); }}
+            onReadReport={(text) => { cancelResponse(); voice.speak(text, { onEnd: () => setResumeJarvisListening(true) }); }}
+          />}
           onOpenVoiceSettings={voice.openPrivacySettings}
           onToggleVoice={toggleJarvisVoice}
           voiceEnabled={speakEnabled}

@@ -23,7 +23,8 @@ export async function POST(request: Request) {
       case 'start': {
         if (typeof body.prompt !== 'string' || typeof body.workspace !== 'string') throw new Error('Görev ve klasör alanları geçersiz.');
         if (officeAgents().some((agent) => agent.enabled && agent.provider === 'inherit') && !hasExplicitConnection(body.settings)) throw new Error('Sohbet ayarlarını kullanan ajanlar için etkin AI bağlantısı gerekli. Varsayılan sağlayıcıya geçilmedi.');
-        const run = createOfficeRun(body.prompt, body.workspace);
+        if (body.focusFile !== undefined && (typeof body.focusFile !== 'string' || typeof body.expectedHash !== 'string')) throw new Error('Codex dosya bağlamı geçersiz.');
+        const run = createOfficeRun(body.prompt, body.workspace, body.focusFile, body.expectedHash);
         after(() => executeOfficeRun(run, settings, body.webSearch !== false));
         return NextResponse.json({ run }, { status: 202 });
       }

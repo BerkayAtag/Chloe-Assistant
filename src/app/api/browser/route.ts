@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { localRequestAllowed } from '@/lib/request-origin';
+import { readPublicResource } from '@/lib/public-page';
 
 type BrowserAction = 'navigate' | 'read_page' | 'screenshot' | 'read_element';
 
@@ -50,9 +51,9 @@ export async function POST(req: Request) {
     } catch {
       return NextResponse.json({ error: 'Geçerli bir web adresi gir.' }, { status: 400 });
     }
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+    if (url.protocol !== 'https:' || url.username || url.password || url.port && url.port !== '443') {
       return NextResponse.json(
-        { error: 'Tarayıcı yalnızca kullanıcı bilgisi içermeyen HTTP/HTTPS adreslerini açar.' },
+        { error: 'Web önizlemesi yalnızca herkese açık HTTPS adreslerini okur. Etkileşimli gezinme için macOS Tarayıcı Yönetimi kullan.' },
         { status: 400 }
       );
     }
@@ -61,6 +62,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'CSS seçicisi geçersiz veya çok uzun.' }, { status: 400 });
     }
 
+    // Validate and pin the top-level document before starting Chromium.
+    const document = await readPublicResource(url.href, req.signal);
     let chromium;
     try {
       ({ chromium } = await import('playwright'));
@@ -81,8 +84,19 @@ export async function POST(req: Request) {
       );
     }
 
-    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-    await page.goto(url.href, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, javaScriptEnabled: false, serviceWorkers: 'block', acceptDownloads: false });
+    let requests = 0, bytes = 0;
+    await context.route('**/*', async (route) => {
+      try {
+        if (++requests > 40 || bytes > 20 * 1024 * 1024 || route.request().method() !== 'GET') return await route.abort('blockedbyclient');
+        const resource = route.request().url() === document.url ? document : await readPublicResource(route.request().url(), req.signal);
+        bytes += resource.bytes.length;
+        if (bytes > 20 * 1024 * 1024) return await route.abort('blockedbyclient');
+        await route.fulfill({ status: 200, contentType: resource.mime, body: resource.bytes });
+      } catch { await route.abort('blockedbyclient').catch(() => {}); }
+    });
+    const page = await context.newPage();
+    await page.goto(document.url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
 
     switch (body.action as BrowserAction) {
       case 'navigate':

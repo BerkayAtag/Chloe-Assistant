@@ -28,7 +28,7 @@ export async function deepResearch(
     `${topic} tarihçe gelişim`,
     `${topic} örnekler kullanım alanları`,
     `${topic} avantajlar dezavantajlar`,
-    `${topic} güncel durum 2025 2026`,
+    `${topic} güncel durum ${new Date().getFullYear()}`,
   ];
 
   const seen = new Map<string, { title: string; url: string; snippet: string }>();

@@ -1,6 +1,7 @@
 'use client';
+import EmailConnect from '@/components/EmailConnect';
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import {
   AudioLines,
   CalendarDays,
@@ -26,6 +27,7 @@ import {
 } from 'lucide-react';
 import { modalityStatus, type JarvisVoiceTone, type Settings } from '@/lib/settings';
 import VoiceOrb from '@/components/VoiceOrb';
+import { jarvisModelSettings } from '@/lib/jarvis-model';
 import type { FemaleSpeechVoice } from '@/hooks/useVoice';
 
 type Integration = {
@@ -66,6 +68,8 @@ type JarvisConsoleProps = {
   onCancel: () => void;
   onSettingsChange: (patch: Partial<Settings>) => void;
   onOpenOffice: () => void;
+  workPanel?: ReactNode;
+  timing?: { firstTokenMs?: number; totalMs?: number; audioStartMs?: number; servedModel?: string };
   speechIsOnDevice: boolean | null;
   isThinking: boolean;
   speechSupported: boolean;
@@ -109,6 +113,8 @@ export default function JarvisConsole({
   onCancel,
   onSettingsChange,
   onOpenOffice,
+  workPanel,
+  timing,
   speechIsOnDevice,
   isThinking,
   speechSupported,
@@ -140,6 +146,7 @@ export default function JarvisConsole({
   const cloudVoices = geminiVoice ? ['Kore', 'Aoede', 'Leda', 'Sulafat', 'Zephyr', 'Achernar'] : [...new Set([settings.customSpeechVoice || 'nova', 'nova', 'shimmer', 'alloy'])];
   const voiceOptions = cloudVoice ? speech.supported ? cloudVoices.map((name) => ({ voiceURI: name, name })) : [] : femaleVoices;
   const [integrations, setIntegrations] = useState<Integration[]>([]);
+  const [integrationRefresh, setIntegrationRefresh] = useState(0);
   const [loadingIntegrations, setLoadingIntegrations] = useState(false);
   const [integrationError, setIntegrationError] = useState('');
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
@@ -210,7 +217,13 @@ export default function JarvisConsole({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [panel, selectedProvider]);
+  }, [panel, selectedProvider, integrationRefresh]);
+
+  useEffect(() => {
+    const refresh = () => setIntegrationRefresh((value) => value + 1);
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -455,6 +468,13 @@ export default function JarvisConsole({
               {lastResponse && <p className="text-sm leading-6"><span className="mr-2 font-medium text-app-accent">{assistantName}</span>{lastResponse}</p>}
             </div>
           )}
+          {!focusMode && timing && Object.keys(timing).length > 0 && <p className="jarvis-timing">
+            {timing.firstTokenMs !== undefined && `İlk metin: ${(timing.firstTokenMs / 1000).toFixed(1)} sn · `}
+            {timing.audioStartMs !== undefined && `İlk ses: ${(timing.audioStartMs / 1000).toFixed(1)} sn · `}
+            {timing.totalMs !== undefined && `Metin tamamı: ${(timing.totalMs / 1000).toFixed(1)} sn`}
+            {timing.servedModel && <span className="block">Aracının bildirdiği alt model: {timing.servedModel}</span>}
+          </p>}
+          {!focusMode && workPanel}
           {error && (
             <div role="alert" className="max-h-24 shrink-0 overflow-y-auto max-w-xl rounded-xl border border-app-danger/30 bg-app-danger-soft px-4 py-3 text-left text-sm text-app-danger">
               <p>{error}</p>
@@ -496,6 +516,9 @@ export default function JarvisConsole({
             <details className="jarvis-options">
               <summary>Ses ve davranış ayarları</summary>
               <div className="jarvis-options-body custom-scrollbar">
+          <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={settings.jarvisFastMode !== false} onChange={(event) => onSettingsChange({ jarvisFastMode: event.target.checked })}/>Hızlı konuşma: kısa yanıt, sınırlı yakın geçmiş, düşük düşünme süresi</label>
+          <p className="text-xs text-app-muted">Ana API sesi ilk cümle gelirken hazırlanır. Uzun kodlama ve rapor işleri iş panelinde ekip olarak çalışır. Cihaz sesi ağ beklemez; ses kalitesi yüklü sese bağlıdır.</p>
+          {jarvisModelSettings(settings).customModel !== settings.customModel && <p className="text-xs text-app-muted">Yalnız hızlı sesli sohbet: FreeLLMAPI auto → auto:fast. Ekip ve kodlama ayarları değişmez. Sabit model istersen Ayarlar’dan seçebilirsin.</p>}
           <div className="flex w-full max-w-3xl flex-wrap items-center justify-center gap-3 rounded-2xl border border-app-border bg-app-surface px-3 py-2.5 sm:gap-4">
             <label className="flex items-center gap-2 text-xs text-app-muted"><span>Ses motoru</span><select aria-label="Ses motoru" value={settings.jarvisSpeechEngine} onChange={(e) => { onCancel(); onSettingsChange({ jarvisSpeechEngine: e.target.value as Settings['jarvisSpeechEngine'] }); }} className="rounded-lg border border-app-border bg-app-surface px-2.5 py-1.5 text-xs text-app-text"><option value="main">Ana API · {speech.label}</option><option value="device">Cihaz sesi (çevrimdışı)</option></select></label>
             <label className="flex items-center gap-2 text-xs text-app-muted">
@@ -593,6 +616,7 @@ export default function JarvisConsole({
           </div>
 
           {integrationError && <div role="alert" className="mb-5 rounded-xl border border-app-danger/30 bg-app-danger-soft p-3 text-sm text-app-danger">{integrationError}</div>}
+          <EmailConnect integrations={integrations} onUpdated={() => setIntegrationRefresh((value) => value + 1)}/>
           {loadingIntegrations ? (
             <div className="flex items-center gap-2 text-sm text-app-muted"><LoaderCircle className="animate-spin" size={18} /> Bağlantılar kontrol ediliyor…</div>
           ) : (
@@ -621,10 +645,11 @@ export default function JarvisConsole({
                     </div>
                     {integration.setupMessage && !integration.configured && (
                       <div className="mt-3 rounded-xl border border-app-warning/30 bg-app-warning/5 p-3">
-                        <p className="text-xs leading-5 text-app-warning">{integration.setupMessage}</p>
+                        <p className="text-xs leading-5 text-app-warning">Yukarıdaki bir defalık uygulama kurulumunu tamamla; ardından e-posta adresinle bağlanabilirsin.</p>
                         <details className="mt-2 text-xs">
-                          <summary className="cursor-pointer font-medium">Bağlantı kurulum adımları</summary>
+                          <summary className="cursor-pointer font-medium">Geliştiriciler için alternatif .env kurulumu</summary>
                           <div className="mt-2 space-y-2 leading-5 text-app-muted">
+                            <p>{integration.setupMessage}</p>
                             <p>Proje kökündeki `.env.local` dosyasına OAuth uygulama değerlerini ekle; gerçek anahtarları bu ekrana veya sohbete yapıştırma:</p>
                             <pre className="overflow-x-auto rounded-lg border border-app-border bg-app-surface p-2">{`${
                               integration.provider === 'google'
@@ -652,6 +677,7 @@ export default function JarvisConsole({
                       ) : (
                         <a
                           href={`/api/integrations/connect/${integration.provider}`}
+                          target="_blank" rel="noreferrer"
                           aria-disabled={!integration.configured}
                           onClick={(event) => {
                             if (!integration.configured) {

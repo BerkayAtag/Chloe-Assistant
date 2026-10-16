@@ -1,4 +1,5 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'fs';
+import { randomUUID } from 'node:crypto';
 import { join } from 'path';
 
 const DATA_DIR = join(process.cwd(), 'data');
@@ -6,7 +7,7 @@ const CONVERSATIONS_FILE = join(DATA_DIR, 'conversations.json');
 
 function ensureDataDir() {
   if (!existsSync(DATA_DIR)) {
-    mkdirSync(DATA_DIR, { recursive: true });
+    mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
   }
   if (!existsSync(CONVERSATIONS_FILE)) {
     writeFileSync(CONVERSATIONS_FILE, JSON.stringify([]), 'utf-8');
@@ -36,7 +37,9 @@ function readConversations(): Conversation[] {
 
 function writeConversations(data: Conversation[]) {
   ensureDataDir();
-  writeFileSync(CONVERSATIONS_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  const temporary = `${CONVERSATIONS_FILE}.${randomUUID()}.tmp`;
+  writeFileSync(temporary, JSON.stringify(data, null, 2), { encoding: 'utf-8', mode: 0o600, flag: 'wx' });
+  renameSync(temporary, CONVERSATIONS_FILE);
 }
 
 function generateId(): string {

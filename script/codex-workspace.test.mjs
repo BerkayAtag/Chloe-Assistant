@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
 import {
+  agentWorkspacePath,
   contentHash,
   listWorkspaceEntries,
   readWorkspaceFile,
@@ -76,6 +77,31 @@ test('binary files cannot be opened or replaced in the text editor', () => {
   writeFileSync(path.join(workspace, 'src', 'image.bin'), Buffer.from([0, 1, 2]));
   assert.throws(() => readWorkspaceFile(workspace, 'src/image.bin'), /ikili dosya/u);
   assert.throws(() => saveWorkspaceFile(workspace, 'src/image.bin', 'text', contentHash('')), /üzerine yazılamaz/u);
+});
+
+test('root-level files can be saved without allowing missing parent directories', () => {
+  saveWorkspaceFile(workspace, 'README.md', 'hello', contentHash(''));
+  const opened = readWorkspaceFile(workspace, 'README.md');
+  saveWorkspaceFile(workspace, 'README.md', 'updated', opened.hash);
+  assert.equal(readWorkspaceFile(workspace, 'README.md').source, 'updated');
+  assert.throws(() => saveWorkspaceFile(workspace, 'missing/nested.ts', 'wrong target', contentHash('')), /üst klasörü/u);
+  assert.throws(() => saveWorkspaceFile(workspace, 'missing/missing', 'wrong target', contentHash('')), /üst klasörü/u);
+  assert.throws(() => readWorkspaceFile(workspace, 'missing'), WorkspaceError);
+});
+
+test('agent paths accept scoped absolute paths and root listings without weakening boundaries', () => {
+  const root = resolveWorkspaceRoot(workspace);
+  assert.equal(agentWorkspacePath(root, path.join(root, 'src/app.ts')), 'src/app.ts');
+  assert.equal(agentWorkspacePath(root, root, true), '');
+  assert.equal(agentWorkspacePath(root, '.', true), '');
+  assert.equal(agentWorkspacePath(root, '', true), '');
+  for (const input of [outside, '../outside.txt', path.join(root, '.env.local'), path.join(root, 'src/external.txt')]) {
+    assert.throws(() => agentWorkspacePath(root, input), WorkspaceError);
+  }
+});
+
+test('save limit counts UTF-8 bytes instead of JavaScript characters', () => {
+  assert.throws(() => saveWorkspaceFile(workspace, 'unicode.txt', '🌍'.repeat(31_000), contentHash('')), /120 KB/u);
 });
 
 test('workspace root must be a specific directory, not the filesystem or home root', () => {

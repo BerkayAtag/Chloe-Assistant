@@ -103,11 +103,21 @@ export async function POST(request: Request) {
           detached: process.platform !== 'win32',
           stdio: 'pipe',
         });
+        child.stdin.end();
+        let escalation: ReturnType<typeof setTimeout> | undefined;
+        const stop = () => {
+          if (child.pid && process.platform !== 'win32') terminateGroup(child.pid, 'SIGTERM');
+          else child.kill('SIGTERM');
+          escalation ||= setTimeout(() => {
+            if (child.pid && process.platform !== 'win32') terminateGroup(child.pid, 'SIGKILL');
+            else if (child.exitCode === null) child.kill('SIGKILL');
+          }, 2000);
+          escalation.unref();
+        };
         const append = (chunk: Buffer) => {
           if (byteCount >= MAX_OUTPUT_BYTES) {
             truncated = true;
-            if (child.pid && process.platform !== 'win32') terminateGroup(child.pid, 'SIGTERM');
-            else child.kill('SIGTERM');
+            stop();
             return;
           }
           const remaining = MAX_OUTPUT_BYTES - byteCount;
@@ -116,32 +126,27 @@ export async function POST(request: Request) {
           byteCount += kept.byteLength;
           if (kept.byteLength < chunk.byteLength) {
             truncated = true;
-            if (child.pid && process.platform !== 'win32') terminateGroup(child.pid, 'SIGTERM');
-            else child.kill('SIGTERM');
+            stop();
           }
         };
         child.stdout.on('data', append);
         child.stderr.on('data', append);
         const timeout = setTimeout(() => {
           timedOut = true;
-          if (child.pid && process.platform !== 'win32') terminateGroup(child.pid, 'SIGTERM');
-          else child.kill('SIGTERM');
-          setTimeout(() => {
-            if (child.pid && child.exitCode === null && process.platform !== 'win32') terminateGroup(child.pid, 'SIGKILL');
-          }, 2000).unref();
+          stop();
         }, TIMEOUT_MS);
-        const abort = () => {
-          if (child.pid && process.platform !== 'win32') terminateGroup(child.pid, 'SIGTERM');
-          else child.kill('SIGTERM');
-        };
+        const abort = stop;
         child.once('error', (error) => {
           clearTimeout(timeout);
+          clearTimeout(escalation);
           request.signal.removeEventListener('abort', abort);
           reject(error);
         });
         request.signal.addEventListener('abort', abort, { once: true });
+        if (request.signal.aborted) abort();
         child.once('close', (exitCode) => {
           clearTimeout(timeout);
+          clearTimeout(escalation);
           request.signal.removeEventListener('abort', abort);
           resolve({ output: Buffer.concat(chunks).toString('utf8'), exitCode, timedOut, truncated });
         });

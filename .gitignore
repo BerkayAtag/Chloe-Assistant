@@ -40,6 +40,7 @@ yarn-error.log*
 /.codex/
 # Local QA notes can contain machine-specific paths and evidence locations.
 /docs/theme-voice-qa-2026-10-13.md
+/QA-*.md
 
 # vercel
 .vercel

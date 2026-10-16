@@ -12,7 +12,7 @@ nonisolated private func installSpeechTap(input: AVAudioInputNode, format: AVAud
 }
 
 @MainActor
-final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, AVSpeechSynthesizerDelegate {
+final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, AVSpeechSynthesizerDelegate {
     private var window: NSWindow!
     private var detailView = NSView()
     private var primaryWebView: WKWebView?
@@ -31,6 +31,8 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
     private var codeOutput: NSTextView?
     private var computerCommandField: NSTextField?
     private var computerOutput: NSTextField?
+    private var computerCommand: BoundedCommand?
+    private var codeCommand: BoundedCommand?
     private var fullAccessMode = false
     private var speechRecognizer: SFSpeechRecognizer?
     private var speechEngine: AVAudioEngine?
@@ -40,6 +42,7 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
     private var speechAuthorizationInProgress = false
     private var speechTapInstalled = false
     private var speechSilenceTimer: Timer?
+    private var speechSilenceInterval: TimeInterval = 1.4
     private var speechNoInputTimer: Timer?
     private var speechFinalizationTimer: Timer?
     private var speechLastTranscript = ""
@@ -72,6 +75,8 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
     func applicationWillTerminate(_ notification: Notification) {
+        computerCommand?.cancel()
+        codeCommand?.cancel()
         stopDictation(notifyWebView: false)
         voiceSynthesizer.stopSpeaking(at: .immediate)
         // The same local server also serves the web app; quitting the desktop
@@ -123,6 +128,12 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
         // SwiftPM GUI launches do not always report the enclosing .app as
         // Bundle.main. Resolve from the actual executable as a fallback.
         var project = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent()
+        // Applications installs are no longer next to the source checkout.
+        let config = Bundle.main.url(forResource: "ChloeRuntime", withExtension: "plist")
+            .flatMap { NSDictionary(contentsOf: $0) }
+        if let configuredRoot = config?["projectRoot"] as? String {
+            project = URL(fileURLWithPath: configuredRoot)
+        }
         if !FileManager.default.fileExists(atPath: project.appendingPathComponent("node_modules/next/dist/bin/next").path) {
             project = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent()
             for _ in 0..<6 {
@@ -130,7 +141,11 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
                 project.deleteLastPathComponent()
             }
         }
-        let node = "/opt/homebrew/bin/node"
+        let nodeCandidates = [config?["nodePath"] as? String, "/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node"].compactMap { $0 }
+        guard let node = nodeCandidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+            NSLog("Chloe: Node.js bulunamadı. Kurulum betiğini yeniden çalıştır.")
+            return
+        }
         let entry = project.appendingPathComponent("node_modules/next/dist/bin/next")
         guard FileManager.default.fileExists(atPath: entry.path) else {
             NSLog("Chloe server entry not found: %@", entry.path)
@@ -199,7 +214,7 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
         case "openCodex":
             showCodexWindow()
         case "startDictation":
-            startDictation()
+            startDictation(fast: command == "fast")
         case "stopDictation":
             stopDictation()
         case "getSpeechVoices":
@@ -267,12 +282,18 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
         }
     }
 
-    private func startDictation() {
+    private func startDictation(fast: Bool = false) {
         guard primaryWebView != nil else { return }
         guard speechEngine == nil, speechTask == nil, !speechAuthorizationInProgress else { return }
+        speechSilenceInterval = fast ? 0.9 : 1.4
         speechGeneration += 1
         let generation = speechGeneration
         speechAuthorizationInProgress = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
+            guard let self, self.speechGeneration == generation, self.speechAuthorizationInProgress else { return }
+            self.stopDictation(notifyWebView: false)
+            self.emitSpeechEvent(error: "macOS mikrofon/konuşma tanıma izni yanıt vermedi. Sistem Ayarları > Gizlilik ve Güvenlik içindeki Mikrofon ve Konuşma Tanıma izinlerini kontrol et; sonra yeniden dene.", stopped: true)
+        }
         speechLastTranscript = ""
         emitSpeechEvent(starting: true)
 
@@ -383,7 +404,7 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
                 speechNoInputTimer = nil
                 speechSilenceTimer?.invalidate()
                 if !isFinal {
-                    speechSilenceTimer = Timer.scheduledTimer(withTimeInterval: 1.4, repeats: false) { [weak self] _ in
+                    speechSilenceTimer = Timer.scheduledTimer(withTimeInterval: speechSilenceInterval, repeats: false) { [weak self] _ in
                         DispatchQueue.main.async { [weak self] in
                             self?.finishDictationInput(generation: generation)
                         }
@@ -624,6 +645,7 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
         let commandField = NSTextField(string: command ?? ""); commandField.placeholderString = "Komut (örn. Finder'ı aç, Terminal'i aç veya zsh komutu)"; commandField.translatesAutoresizingMaskIntoConstraints = false; commandField.widthAnchor.constraint(greaterThanOrEqualToConstant: 560).isActive = true; computerCommandField = commandField
         root.addArrangedSubview(commandField)
         root.addArrangedSubview(button("Komutu Çalıştır") { [weak self] in self?.executeComputerCommand() })
+        root.addArrangedSubview(button("Komutu Durdur") { [weak self] in self?.computerCommand?.cancel() })
         let output = NSTextField(wrappingLabelWithString: "Hazır"); output.textColor = .secondaryLabelColor; output.maximumNumberOfLines = 0; computerOutput = output
         root.addArrangedSubview(output)
         let controller = NSViewController(); controller.view = root
@@ -638,6 +660,7 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
     }
 
     @objc private func executeComputerCommand() {
+        guard computerCommand == nil else { computerOutput?.stringValue = "Bir komut zaten çalışıyor. Bitmesini bekle veya Komutu Durdur'a bas."; return }
         guard let raw = computerCommandField?.stringValue.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return }
         if !fullAccessMode {
             let alert = NSAlert(); alert.messageText = "Bilgisayar komutu çalıştırılsın mı?"; alert.informativeText = raw; alert.addButton(withTitle: "Çalıştır"); alert.addButton(withTitle: "İptal"); alert.alertStyle = .warning
@@ -650,12 +673,13 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
         let lower = raw.lowercased()
         if lower.contains("finder") && (lower.contains("aç") || lower.contains("ac") || lower.contains("open")) { NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app")); computerOutput?.stringValue = "Finder açıldı."; return }
         if lower.contains("terminal") && (lower.contains("aç") || lower.contains("ac") || lower.contains("open")) { NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")); computerOutput?.stringValue = "Terminal açıldı."; return }
-        let task = Process(); task.executableURL = URL(fileURLWithPath: "/bin/zsh"); task.arguments = ["-lc", raw]; task.currentDirectoryURL = URL(fileURLWithPath: FileManager.default.homeDirectoryForCurrentUser.path)
-        let pipe = Pipe(); task.standardOutput = pipe; task.standardError = pipe
         computerOutput?.stringValue = "Çalıştırılıyor…"
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            do { try task.run(); let data = pipe.fileHandleForReading.readDataToEndOfFile(); task.waitUntilExit(); let output = String(data: data, encoding: .utf8) ?? ""; DispatchQueue.main.async { self?.computerOutput?.stringValue = output.isEmpty ? "Komut tamamlandı (çıkış: \(task.terminationStatus))" : output } } catch { DispatchQueue.main.async { self?.computerOutput?.stringValue = "Komut çalıştırılamadı: \(error.localizedDescription)" } }
+        let command = BoundedCommand { [weak self] output in
+            DispatchQueue.main.async { self?.computerOutput?.stringValue = output; self?.computerCommand = nil }
         }
+        computerCommand = command
+        do { try command.start(raw, directory: FileManager.default.homeDirectoryForCurrentUser) }
+        catch { computerCommand = nil; computerOutput?.stringValue = "Komut çalıştırılamadı: \(error.localizedDescription)" }
     }
 
     private func showCodexWindow() {
@@ -663,7 +687,7 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
         let root = NSView(); let toolbar = NSStackView(); toolbar.orientation = .horizontal; toolbar.spacing = 8; toolbar.edgeInsets = NSEdgeInsets(top: 10, left: 10, bottom: 10, right: 10); toolbar.translatesAutoresizingMaskIntoConstraints = false
         let path = NSTextField(string: ""); path.placeholderString = "Düzenlenecek yerel dosya"; path.translatesAutoresizingMaskIntoConstraints = false; path.widthAnchor.constraint(greaterThanOrEqualToConstant: 380).isActive = true; codePathField = path
         let command = NSTextField(string: "npm run build"); command.placeholderString = "Yerel komut"; command.translatesAutoresizingMaskIntoConstraints = false; command.widthAnchor.constraint(greaterThanOrEqualToConstant: 220).isActive = true; codeCommandField = command
-        [button("Dosya Aç") { [weak self] in self?.openCodeFile() }, button("Kaydet") { [weak self] in self?.saveCodeFile() }, path, button("Komutu Çalıştır") { [weak self] in self?.runCodeCommand() }, command].forEach { toolbar.addArrangedSubview($0) }
+        [button("Dosya Aç") { [weak self] in self?.openCodeFile() }, button("Kaydet") { [weak self] in self?.saveCodeFile() }, path, button("Komutu Çalıştır") { [weak self] in self?.runCodeCommand() }, button("Durdur") { [weak self] in self?.codeCommand?.cancel() }, command].forEach { toolbar.addArrangedSubview($0) }
         let aiBar = NSStackView(); aiBar.orientation = .horizontal; aiBar.spacing = 8; aiBar.translatesAutoresizingMaskIntoConstraints = false
         let instruction = NSTextField(string: ""); instruction.placeholderString = "Bu dosyada ne değişsin?"; instruction.translatesAutoresizingMaskIntoConstraints = false; instruction.setContentHuggingPriority(.defaultLow, for: .horizontal); codeInstructionField = instruction
         let aiButton = button("AI ile Düzenle") { [weak self] in self?.requestCodeEdit() }; codeEditButton = aiButton
@@ -780,39 +804,26 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
     }
 
     private func runCodeCommand() {
+        guard codeCommand == nil else { codeOutput?.string = "Bir komut zaten çalışıyor. Bitmesini bekle veya Durdur'a bas."; return }
         guard let command = codeCommandField?.stringValue.trimmingCharacters(in: .whitespacesAndNewlines), !command.isEmpty else { return }
-        let task = Process(); task.executableURL = URL(fileURLWithPath: "/bin/zsh"); task.arguments = ["-lc", command]
+        var directory = FileManager.default.homeDirectoryForCurrentUser
         if let path = codePathField?.stringValue, !path.isEmpty {
-            task.currentDirectoryURL = URL(fileURLWithPath: path).deletingLastPathComponent()
-        } else {
-            task.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+            directory = URL(fileURLWithPath: path).deletingLastPathComponent()
         }
         let alert = NSAlert()
         alert.messageText = "Komut çalıştırılsın mı?"
-        alert.informativeText = "\(command)\n\nKlasör: \(task.currentDirectoryURL?.path ?? FileManager.default.homeDirectoryForCurrentUser.path)"
+        alert.informativeText = "\(command)\n\nKlasör: \(directory.path)"
         alert.addButton(withTitle: "Çalıştır")
         alert.addButton(withTitle: "İptal")
         alert.alertStyle = .warning
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        let pipe = Pipe(); task.standardOutput = pipe; task.standardError = pipe
         codeOutput?.string = "Komut çalıştırılıyor…"
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            do {
-                try task.run()
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                task.waitUntilExit()
-                let output = String(data: data, encoding: .utf8) ?? ""
-                DispatchQueue.main.async {
-                    self?.codeOutput?.string = output.isEmpty
-                        ? "Komut tamamlandı (çıkış: \(task.terminationStatus))"
-                        : output
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    self?.codeOutput?.string = "Komut çalıştırılamadı: \(error.localizedDescription)"
-                }
-            }
+        let task = BoundedCommand { [weak self] output in
+            DispatchQueue.main.async { self?.codeOutput?.string = output; self?.codeCommand = nil }
         }
+        codeCommand = task
+        do { try task.start(command, directory: directory) }
+        catch { codeCommand = nil; codeOutput?.string = "Komut çalıştırılamadı: \(error.localizedDescription)" }
     }
     private func openAccessibilitySettings() {
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
@@ -839,7 +850,42 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
         configuration.userContentController.add(bridge, name: "chloeMac")
         bridgeHandlers.append(bridge)
         let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
-        let web = WKWebView(frame: .zero, configuration: configuration); web.translatesAutoresizingMaskIntoConstraints = false; web.navigationDelegate = self; web.allowsBackForwardNavigationGestures = true; web.load(request); return web
+        let web = WKWebView(frame: .zero, configuration: configuration); web.translatesAutoresizingMaskIntoConstraints = false; web.navigationDelegate = self; web.uiDelegate = self; web.allowsBackForwardNavigationGestures = true; web.load(request); return web
+    }
+
+    // WKWebView otherwise silently returns false/nil for confirm/prompt,
+    // breaking Codex file creation, test approval, and unsaved-edit protection.
+    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor (Bool) -> Void) {
+        guard frame.securityOrigin.host == "127.0.0.1", frame.securityOrigin.port == 3004 else { completionHandler(false); return }
+        let alert = NSAlert(); alert.messageText = "Chloe · Onay"; alert.informativeText = String(message.prefix(4000))
+        alert.addButton(withTitle: "Devam et"); alert.addButton(withTitle: "İptal")
+        completionHandler(alert.runModal() == .alertFirstButtonReturn)
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor (String?) -> Void) {
+        guard frame.securityOrigin.host == "127.0.0.1", frame.securityOrigin.port == 3004 else { completionHandler(nil); return }
+        let alert = NSAlert(); alert.messageText = "Chloe"; alert.informativeText = String(prompt.prefix(4000))
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 24)); field.stringValue = defaultText ?? ""
+        alert.accessoryView = field; alert.addButton(withTitle: "Tamam"); alert.addButton(withTitle: "İptal")
+        alert.window.initialFirstResponder = field
+        completionHandler(alert.runModal() == .alertFirstButtonReturn ? field.stringValue : nil)
+    }
+
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if navigationAction.targetFrame == nil, let url = navigationAction.request.url,
+           ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.user == nil, url.password == nil {
+            // OAuth must start and finish in the same external browser so its
+            // state cookie is retained and Google does not reject embedded login.
+            NSWorkspace.shared.open(url)
+        }
+        return nil
+    }
+
+    func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor ([URL]?) -> Void) {
+        guard frame.securityOrigin.host == "127.0.0.1", frame.securityOrigin.port == 3004 else { completionHandler(nil); return }
+        let panel = NSOpenPanel(); panel.canChooseFiles = true; panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        completionHandler(panel.runModal() == .OK ? panel.urls : nil)
     }
     private func button(_ title: String, action: @escaping () -> Void) -> NSButton {
         let button = ClosureButton(title: title, action: action)

@@ -16,6 +16,8 @@ ICON_SOURCE="$ROOT_DIR/macos/Resources/Chloe.icns"
 SERVER_PORT="3004"
 SERVER_URL="http://127.0.0.1:$SERVER_PORT"
 BUILD_ID_FILE="$ROOT_DIR/.next/BUILD_ID"
+INSTALL_BUNDLE="/Applications/Chloe.app"
+BACKUP_APPS="$HOME/Library/Application Support/Chloe/app-backups"
 
 server_pid() {
   lsof -t -nP -iTCP:"$SERVER_PORT" -sTCP:LISTEN 2>/dev/null | head -n 1
@@ -142,7 +144,7 @@ fi
 if [[ "$MODE" != "--debug" && "$MODE" != "debug" ]]; then
   while read -r pid; do
     [[ -n "$pid" ]] || continue
-    if [[ "$(ps -p "$pid" -o comm=)" == "$APP_BINARY" ]]; then
+    if [[ "$(ps -p "$pid" -o comm=)" == "$APP_BINARY" || "$(ps -p "$pid" -o comm=)" == "$INSTALL_BUNDLE/Contents/MacOS/$APP_NAME" ]]; then
       kill "$pid"
       for _ in {1..50}; do
         kill -0 "$pid" 2>/dev/null || break
@@ -194,7 +196,48 @@ if [[ -d "$APP_CONTENTS" && -s "$ICON_SOURCE" ]]; then
   touch "$APP_BUNDLE"
 fi
 
-open_app() { /usr/bin/open "$APP_BUNDLE"; }
+RUNTIME_CONFIG="$APP_CONTENTS/Resources/ChloeRuntime.plist"
+APP_VERSION="$(cd "$ROOT_DIR" && node -p "require('./package.json').version")"
+/usr/bin/plutil -replace CFBundleShortVersionString -string "$APP_VERSION" "$APP_CONTENTS/Info.plist"
+/usr/bin/plutil -replace CFBundleVersion -string "$APP_VERSION" "$APP_CONTENTS/Info.plist"
+cp "$ROOT_DIR/THIRD_PARTY_NOTICES.md" "$APP_CONTENTS/Resources/THIRD_PARTY_NOTICES.md"
+mkdir -p "$APP_CONTENTS/Resources/licenses"
+cp "$ROOT_DIR/licenses/agency-agents-LICENSE.txt" "$ROOT_DIR/licenses/openrig-LICENSE.txt" "$ROOT_DIR/licenses/replica-skill-LICENSE.txt" "$APP_CONTENTS/Resources/licenses/"
+/usr/bin/plutil -create xml1 "$RUNTIME_CONFIG"
+/usr/bin/plutil -insert projectRoot -string "$ROOT_DIR" "$RUNTIME_CONFIG"
+/usr/bin/plutil -insert nodePath -string "$(command -v node)" "$RUNTIME_CONFIG"
+
+install_app() {
+  [[ -w /Applications ]] || { echo "Applications klasörüne yazılamıyor. dist/ChloeDesktop.app paketini Finder ile Applications'a taşı." >&2; return 1; }
+  if [[ -e "$INSTALL_BUNDLE" ]]; then
+    local existing_id
+    existing_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INSTALL_BUNDLE/Contents/Info.plist" 2>/dev/null || true)"
+    [[ "$existing_id" == "$BUNDLE_ID" ]] || { echo "Applications/Chloe.app başka bir uygulama; üzerine yazılmadı." >&2; return 1; }
+  fi
+  local staging backup
+  staging="$(mktemp -d /Applications/.chloe-install.XXXXXX)"
+  # Finder's custom folder icon metadata cannot be code-signed. The proper
+  # application icon remains in Resources and Info.plist.
+  /usr/bin/ditto --norsrc --noextattr "$APP_BUNDLE" "$staging/Chloe.app"
+  /usr/bin/codesign --force --deep --sign - "$staging/Chloe.app"
+  /usr/bin/codesign --verify --deep --strict "$staging/Chloe.app"
+  backup="$BACKUP_APPS/Chloe-$(date +%Y%m%d-%H%M%S).app"
+  if [[ -e "$INSTALL_BUNDLE" ]]; then
+    mkdir -p "$BACKUP_APPS"
+    mv "$INSTALL_BUNDLE" "$backup"
+    echo "Önceki uygulama korundu: $backup"
+  fi
+  if ! mv "$staging/Chloe.app" "$INSTALL_BUNDLE"; then
+    [[ -d "$backup" ]] && mv "$backup" "$INSTALL_BUNDLE"
+    echo "Kurulum başarısız; önceki sürüm geri getirildi." >&2
+    return 1
+  fi
+  rmdir "$staging"
+  echo "Uygulama kuruldu: $INSTALL_BUNDLE (yerel kurulum; kaynak proje klasörünü koru)"
+}
+
+if [[ "$MODE" != "--debug" && "$MODE" != "debug" ]]; then install_app; fi
+open_app() { /usr/bin/open "$INSTALL_BUNDLE"; }
 case "$MODE" in
   run) open_app ;;
   --verify|verify)

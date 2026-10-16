@@ -12,7 +12,7 @@ import { activeCustomProvider, type Settings } from './settings';
  * Eksik API anahtarı gibi yapılandırma hatalarında anlaşılır bir
  * Türkçe hata fırlatır.
  */
-export function getProvider(settings: Settings): LanguageModel {
+export function getProvider(settings: Settings, options?: { onResponse?: (headers: Headers) => void }): LanguageModel {
   if (settings.provider === 'local') {
     const url = settings.ollamaUrl || 'http://127.0.0.1:11434/v1';
     const ollama = createOpenAI({
@@ -46,7 +46,13 @@ export function getProvider(settings: Settings): LanguageModel {
       if (!['http:', 'https:'].includes(endpoint.protocol) || endpoint.username || endpoint.password) {
         throw new Error('API adresi HTTP veya HTTPS olmalı ve kullanıcı bilgisi içermemeli.');
       }
-      return createOpenAI({ apiKey: customApiKey, baseURL: endpoint.toString().replace(/\/+$/u, '') })
+      return createOpenAI({ apiKey: customApiKey, baseURL: endpoint.toString().replace(/\/+$/u, ''),
+        ...(options?.onResponse ? { fetch: async (input, init) => {
+          const response = await fetch(input, init);
+          options.onResponse?.(response.headers);
+          return response;
+        } } : {}),
+      })
         .chat(customModel);
     }
     case 'openai': {

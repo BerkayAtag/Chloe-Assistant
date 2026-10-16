@@ -13,6 +13,7 @@ import { getIdentity, setAssistantName, setUserName } from '@/lib/identity';
 import { searchWeb, fetchPageText, searchImages } from '@/lib/search';
 import { deepResearch } from '@/lib/research';
 import { expertiseContext } from '@/lib/knowledge';
+import { memoryBankContext } from '@/lib/memory-bank';
 import {
   updateAvatarFromUrl,
   updateAvatarFromQuery,
@@ -21,7 +22,9 @@ import {
 import type { Settings } from '@/lib/settings';
 import { activeCustomProvider, DEFAULT_SETTINGS, hasExplicitConnection, modelLabel } from '@/lib/settings';
 import { localRequestAllowed } from '@/lib/request-origin';
-import { thinkingOptions } from '@/lib/thinking-options';
+import { thinkingOptions, thinkingOutputTokenLimit } from '@/lib/thinking-options';
+import { safeRoutedModel, type JarvisEvent } from '@/lib/jarvis-protocol';
+import { jarvisModelSettings } from '@/lib/jarvis-model';
 
 // Derin araştırma; arama, sayfa okuma ve özetleme adımları nedeniyle normal
 // sohbetten uzun sürebilir.
@@ -124,6 +127,7 @@ function detectNameChange(
 }
 
 export async function POST(req: Request) {
+  const startedAt = performance.now();
   if (!localRequestAllowed(req)) return new Response('Sohbet isteği bu uygulamadan yapılmalı.', { status: 403 });
   let body;
   try { body = await req.json(); } catch {
@@ -136,12 +140,20 @@ export async function POST(req: Request) {
   }
   const { messages, settings, conversationId } = body;
   if (!hasExplicitConnection(settings)) return new Response('Etkin AI sağlayıcısını ayarlardan seç. Varsayılan sağlayıcıya otomatik geçilmedi.', { status: 400 });
-  const s: Settings = { ...DEFAULT_SETTINGS, ...(settings || {}) };
+  const s: Settings = jarvisModelSettings({ ...DEFAULT_SETTINGS, ...(settings || {}) });
   const jarvisMode = s.jarvisMode === true;
+  const fastVoice = jarvisMode && s.jarvisFastMode !== false;
+  const eventProtocol = jarvisMode && body.streamProtocol === 'jarvis-v1';
+  if (fastVoice) s.thinkingMode = 'fast';
+  let routedModel: string | null = null;
+  let routingEvent: ((event: JarvisEvent) => void) | undefined;
 
   let provider;
   try {
-    provider = getProvider(s);
+    provider = getProvider(s, { onResponse: (headers) => {
+      routedModel = safeRoutedModel(headers.get('x-routed-via'));
+      if (routedModel) routingEvent?.({ type: 'routing', servedModel: routedModel });
+    } });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Model yapılandırması hatalı.';
     return new Response(msg, { status: 400 });
@@ -181,22 +193,23 @@ export async function POST(req: Request) {
   const webSearchOn = s.webSearch !== false;
 
   // Local model araçları desteklemiyorsa tools gönderme (Ollama 400 döner)
-  const toolsSupported =
+  const needsTools = !fastVoice || /araştır|internette|güncel|haber|hava durumu|kaynak|avatar|görselini|hatırlıyor/iu.test(lastUserContent || '');
+  const toolsSupported = needsTools && (
     s.provider === 'local'
       ? localToolsAreReliable(s.ollamaModel) &&
         (await localModelSupportsTools(s.ollamaUrl, s.ollamaModel))
       : s.cloudProvider !== 'custom' ||
-        (activeCustomProvider(s)?.supportsTools ?? s.customSupportsTools);
+        (activeCustomProvider(s)?.supportsTools ?? s.customSupportsTools));
   const webToolsOn = webSearchOn && toolsSupported;
 
-  const memory = getMemoryContext(conversationId || null);
-  const expertise = expertiseContext();
+  const memory = getMemoryContext(conversationId || null, fastVoice ? 8 : 60, fastVoice ? 2400 : 16000);
+  const expertise = expertiseContext().slice(0, fastVoice ? 3000 : 20000);
 
   // Görsel eklerini modelin multimodal içerik parçalarına çevir. PDF/Word
   // metni istemci tarafından mesaj metnine eklenir; fotoğraflar ise data URL
   // olarak doğrudan görsel anlayabilen bulut modellere aktarılır.
   const modelMessages = Array.isArray(messages)
-    ? messages.map((message: { role: string; content: string; attachments?: Array<{ dataUrl?: string; mimeType?: string }> }) => {
+    ? (fastVoice ? messages.slice(-16) : messages).map((message: { role: string; content: string; attachments?: Array<{ dataUrl?: string; mimeType?: string }> }) => {
         const imageParts = (message.attachments || [])
           .filter((file) => file.dataUrl && file.mimeType?.startsWith('image/'))
           .map((file) => ({ type: 'file' as const, data: file.dataUrl as string, mediaType: file.mimeType as string }));
@@ -207,7 +220,7 @@ export async function POST(req: Request) {
     : messages;
 
   let systemPrompt = [
-    `Sen uzun beyaz saçlı, zarif ve zeki bir personal AI asistanısın. Adın "${assistantName}".`,
+    `Sen bir kişisel AI asistanısın. Adın "${assistantName}".`,
     userName ? `Kullanıcının adı "${userName}". Ona bu adla hitap edebilirsin.` : '',
     'Daima Türkçe, samimi ama profesyonel konuş.',
     '',
@@ -226,11 +239,12 @@ export async function POST(req: Request) {
       : 'Not: Bu modelde araç çağırma yok; internet araması yapamazsın. Bilgine ve aşağıdaki hafızana güvenerek yanıt ver. Kullanıcı senin adını/görselini değiştirmek isterse bunu Ayarlar panelinden yapabileceğini söyle.',
     '',
     'HAFIZA:',
-    'Geçmiş konuşmaları unutmazsın. Aşağıda önceki konuşmalarından hatırladıkların yer alıyor; kullanıcının bağlamına uyduğunda doğal biçimde kullan.',
+    'Aşağıda erişilebilen geçmiş kayıtları var; bağlama uyduğunda kullan. Görmediğin veya kaydedilmemiş bilgiyi hatırladığını iddia etme.',
     toolsSupported
       ? 'Ek bilgi gerektiğinde `search_memory` aracını çağır.'
       : '',
     membershipLines(memory, expertise),
+    memoryBankContext(typeof lastUserContent === 'string' ? lastUserContent : ''),
   ]
     .filter((l) => l !== '')
     .join('\n');
@@ -240,6 +254,7 @@ export async function POST(req: Request) {
       'JARVIS SESLİ ASİSTAN MODU:',
       '- Bu yanıt mevcut API anahtarıyla seçilmiş kullanıcının dil modeline gönderilmiştir.',
       '- Türkçe, kısa ve doğal konuş; sesli okunmaya uygun yanıt ver.',
+      ...(fastVoice ? ['- Hızlı konuşma açık: önce kısa ve anlamlı ilk cümleyi hemen yaz. Olağan yanıtta 1–3 cümle yeterli. Kod, araştırma ve uzun rapor işleri JARVIS iş panelinden ekip olarak yürütülür; burada tamamladığını iddia etme.'] : []),
       '- Sohbet gibi konuş: kısa cümleler ve doğal geçişler kullan. Kullanıcı istemedikçe uzun listeler veya Markdown kullanma.',
       s.jarvisInstructions ? `Kullanıcının asistan tercihleri: ${s.jarvisInstructions.slice(0, 4000)}` : '',
       '- Kullanıcı sesle dikte ettiyse tekrarları ve bariz konuşma tanıma hatalarını anlamı değiştirmeden yorumla.',
@@ -268,7 +283,7 @@ export async function POST(req: Request) {
   // taşıyan istekleri otomatik olarak çalıştır. Böylece modelin tool çağırmayı
   // atlamasına bağlı kalmadan kaynaklar toplanır ve kalıcı uzmanlığa eklenir.
   const automaticResearchRequested =
-    webSearchOn && typeof lastUserContent === 'string' && shouldAutoResearch(lastUserContent);
+    !fastVoice && webSearchOn && typeof lastUserContent === 'string' && shouldAutoResearch(lastUserContent);
   if (automaticResearchRequested && typeof lastUserContent === 'string') {
     try {
       const research = await deepResearch(lastUserContent, summarize, req.signal);
@@ -456,9 +471,10 @@ export async function POST(req: Request) {
     messages: modelMessages,
     tools: toolsSupported ? tools : undefined,
     providerOptions: thinkingOptions(s),
-    maxRetries: 1,
+    maxRetries: fastVoice ? 0 : 1,
+    ...(fastVoice ? { maxOutputTokens: thinkingOutputTokenLimit(s, 768) } : {}),
     abortSignal: AbortSignal.any([req.signal, AbortSignal.timeout(300_000)]),
-    stopWhen: isStepCount(8),
+    stopWhen: isStepCount(fastVoice ? 3 : 8),
     onFinish: async ({ text }) => {
       if (conversationId && text) {
         try {
@@ -475,28 +491,51 @@ export async function POST(req: Request) {
   // hata metni aktar.
   const textStream = new ReadableStream<string>({
     async start(controller) {
+      let closed = false;
+      let firstTokenMs: number | null = null;
+      const event = (value: JarvisEvent) => { if (!closed) controller.enqueue(`${JSON.stringify(value)}\n`); };
+      if (eventProtocol) {
+        routingEvent = event;
+        event({ type: 'meta', connection: modelLabel(s), contextChars: systemPrompt.length });
+        if (routedModel) event({ type: 'routing', servedModel: routedModel });
+      }
       const reader = result.stream.getReader();
       try {
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
-          if (value.type === 'text-delta') controller.enqueue(value.text);
+          if (value.type === 'text-delta') {
+            firstTokenMs ??= Math.round(performance.now() - startedAt);
+            if (eventProtocol) event({ type: 'text', text: value.text });
+            else controller.enqueue(value.text);
+          }
           if (value.type === 'error') {
             const detail = modelErrorMessage(value.error, modelSecrets(s));
-            controller.enqueue(`\n\n[CHLOE_MODEL_ERROR]${detail}`);
+            if (eventProtocol) event({ type: 'error', message: detail });
+            else controller.enqueue(`\n\n[CHLOE_MODEL_ERROR]${detail}`);
           }
         }
+        if (eventProtocol) {
+          event({ type: 'timing', firstTokenMs, totalMs: Math.round(performance.now() - startedAt) });
+          event({ type: 'done' });
+        }
+        closed = true;
         controller.close();
       } catch (error: unknown) {
         const detail = modelErrorMessage(error, modelSecrets(s));
-        controller.enqueue(`\n\n[CHLOE_MODEL_ERROR]${detail}`);
+        if (eventProtocol) event({ type: 'error', message: detail });
+        else controller.enqueue(`\n\n[CHLOE_MODEL_ERROR]${detail}`);
+        closed = true;
         controller.close();
       } finally {
         reader.releaseLock();
+        routingEvent = undefined;
       }
     },
   });
-  return createTextStreamResponse({ stream: textStream });
+  return eventProtocol ? new Response(textStream.pipeThrough(new TextEncoderStream()), {
+    headers: { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' },
+  }) : createTextStreamResponse({ stream: textStream });
 }
 
 function membershipLines(memory: string, expertise: string): string {

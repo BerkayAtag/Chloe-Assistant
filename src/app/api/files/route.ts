@@ -20,7 +20,7 @@ async function extractText(filePath: string, mimeType: string): Promise<string> 
       } finally { await parser.destroy(); }
     }
     if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-      const { stdout } = await execFileAsync('unzip', ['-p', filePath, 'word/document.xml'], { maxBuffer: 2 * 1024 * 1024 });
+      const { stdout } = await execFileAsync('unzip', ['-p', filePath, 'word/document.xml'], { maxBuffer: 2 * 1024 * 1024, timeout: 15000 });
       return stdout
         .replace(/<w:tab\s*\/?>/giu, '\t')
         .replace(/<w:br\s*\/?>/giu, '\n')
@@ -30,7 +30,7 @@ async function extractText(filePath: string, mimeType: string): Promise<string> 
         .replace(/\s+\n/gu, '\n').trim().slice(0, 120_000);
     }
     if (mimeType === 'application/msword') {
-      const { stdout } = await execFileAsync('textutil', ['-convert', 'txt', '-stdout', filePath], { maxBuffer: 2 * 1024 * 1024 });
+      const { stdout } = await execFileAsync('textutil', ['-convert', 'txt', '-stdout', filePath], { maxBuffer: 2 * 1024 * 1024, timeout: 15000 });
       return stdout.trim().slice(0, 120_000);
     }
   } catch (error) {
@@ -49,9 +49,9 @@ export async function POST(request: Request) {
     const id = randomUUID();
     const safeName = item.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'upload';
     const dir = path.join(process.cwd(), 'data', 'uploads');
-    await mkdir(dir, { recursive: true });
+    await mkdir(dir, { recursive: true, mode: 0o700 });
     const storedPath = path.join(dir, id + '-' + safeName);
-    await writeFile(storedPath, Buffer.from(await item.arrayBuffer()));
+    await writeFile(storedPath, Buffer.from(await item.arrayBuffer()), { mode: 0o600 });
     let extractedText = '';
     let warning: string | undefined;
     try { extractedText = await extractText(storedPath, item.type); } catch (error) {

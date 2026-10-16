@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'fs';
 import { join } from 'path';
 
 const DATA_DIR = join(process.cwd(), 'data');
@@ -21,16 +21,15 @@ function ensureFile() {
 
 function read(): ExpertiseTopic[] {
   ensureFile();
-  try {
-    return JSON.parse(readFileSync(KNOWLEDGE_FILE, 'utf-8'));
-  } catch {
-    return [];
-  }
+  const data: unknown = JSON.parse(readFileSync(KNOWLEDGE_FILE, 'utf-8'));
+  if (!Array.isArray(data)) throw new Error('Bilgi bankası okunamadı; mevcut dosya korunuyor.');
+  return data as ExpertiseTopic[];
 }
 
 function write(data: ExpertiseTopic[]) {
   ensureFile();
-  writeFileSync(KNOWLEDGE_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  writeFileSync(`${KNOWLEDGE_FILE}.tmp`, JSON.stringify(data, null, 2), { mode: 0o600 });
+  renameSync(`${KNOWLEDGE_FILE}.tmp`, KNOWLEDGE_FILE);
 }
 
 function generateId(): string {

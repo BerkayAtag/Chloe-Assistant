@@ -4,7 +4,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { settingsForRequest, type Settings } from '@/lib/settings';
-import { splitSpeechText } from '@/lib/speech-text';
+import { cleanSpeechText, createSpeechTextBuffer, splitSpeechText } from '@/lib/speech-text';
+import { createSpeechQueue } from '@/lib/speech-queue';
+
+export type SpeechOptions = { rate?: number; pitch?: number; voiceURI?: string; onEnd?: () => void; onStart?: () => void };
 
 interface UseVoiceOptions {
   lang?: string;
@@ -227,7 +230,7 @@ export function useVoice({ lang = 'tr-TR', onPartial, settings }: UseVoiceOption
           setError('macOS konuşma tanıma başlatılamadı. Mikrofon iznini ve seçili dili kontrol et.');
         }, 45000);
         try {
-          nativeSpeech.postMessage({ action: 'startDictation' });
+          nativeSpeech.postMessage({ action: 'startDictation', command: settings?.jarvisMode && settings.jarvisFastMode !== false ? 'fast' : 'normal' });
         } catch (cause: unknown) {
           clearNativeDictationStartTimer();
           nativeSpeechActiveRef.current = false;
@@ -326,7 +329,7 @@ export function useVoice({ lang = 'tr-TR', onPartial, settings }: UseVoiceOption
         setError(cause instanceof Error ? `Mikrofon başlatılamadı: ${cause.message}` : 'Mikrofon başlatılamadı.');
       }
     },
-    [lang, clearNativeDictationStartTimer, clearRecognitionStartTimer]
+    [lang, settings?.jarvisMode, settings?.jarvisFastMode, clearNativeDictationStartTimer, clearRecognitionStartTimer]
   );
 
   const stopListening = useCallback(() => {
@@ -370,8 +373,69 @@ export function useVoice({ lang = 'tr-TR', onPartial, settings }: UseVoiceOption
     }
   }, []);
 
+  const startCloudSpeech = useCallback((opts?: SpeechOptions) => {
+    if (!settings) return null;
+    stopListening();
+    clearAudio();
+    voiceRequestRef.current = null;
+    utteranceRef.current = null;
+    const native = (window as any).webkit?.messageHandlers?.chloeMac;
+    native?.postMessage({ action: 'stopSpeaking' });
+    window.speechSynthesis?.cancel();
+    setError(null); setIsSpeaking(false);
+    const controller = new AbortController();
+    audioControllerRef.current = controller;
+    let started = false;
+    const current = () => audioControllerRef.current === controller && !controller.signal.aborted;
+    return createSpeechQueue<Blob>({
+      signal: controller.signal,
+      preparing: () => { if (current()) setIsPreparingSpeech(true); },
+      prepare: async (text) => {
+        const response = await fetch('/api/voice', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
+          body: JSON.stringify({ text, voice: settings.jarvisCloudVoice, tone: settings.jarvisVoiceTone, settings: settingsForRequest(settings) }),
+        });
+        if (!response.ok) { const data = await response.json(); throw new Error(data.error || 'Ses üretilemedi.'); }
+        return response.blob();
+      },
+      play: (blob) => new Promise<void>((resolve, reject) => {
+        if (!current()) { resolve(); return; }
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audioRef.current = audio; audioUrlRef.current = url;
+        const cleanup = () => {
+          audio.onended = null; audio.onerror = null; audio.pause(); audio.src = '';
+          controller.signal.removeEventListener('abort', cancelled);
+          URL.revokeObjectURL(url);
+          if (audioRef.current === audio) audioRef.current = null;
+          if (audioUrlRef.current === url) audioUrlRef.current = null;
+        };
+        const cancelled = () => { cleanup(); resolve(); };
+        controller.signal.addEventListener('abort', cancelled, { once: true });
+        audio.onended = () => { cleanup(); if (current()) setIsSpeaking(false); resolve(); };
+        audio.onerror = () => { cleanup(); reject(new Error('Üretilen ses oynatılamadı. Sesi dene düğmesine dokunarak tekrar dene.')); };
+        void audio.play().then(() => {
+          if (current() && audioRef.current === audio) {
+            setIsPreparingSpeech(false); setIsSpeaking(true);
+            if (!started) { started = true; opts?.onStart?.(); }
+          }
+        }, (error) => { cleanup(); reject(error); });
+      }),
+      ended: () => { if (current()) { clearAudio(); setIsSpeaking(false); setIsPreparingSpeech(false); opts?.onEnd?.(); } },
+      failed: (error) => { if (current()) { clearAudio(); setIsSpeaking(false); setIsPreparingSpeech(false); setError(error instanceof Error ? error.message : 'Ses üretilemedi.'); } },
+    });
+  }, [settings, stopListening, clearAudio]);
+
+  const beginSpeechStream = useCallback((opts?: SpeechOptions) => {
+    if (!settings || settings.jarvisSpeechEngine === 'device') return null;
+    const queue = startCloudSpeech(opts);
+    if (!queue) return null;
+    const buffer = createSpeechTextBuffer((text) => queue.push(text));
+    return { push: buffer.push, finish: () => { buffer.finish(); queue.finish(); } };
+  }, [settings, startCloudSpeech]);
+
   const speak = useCallback(
-    (text: string, opts?: { rate?: number; pitch?: number; voiceURI?: string; onEnd?: () => void }) => {
+    (text: string, opts?: SpeechOptions) => {
       if (typeof window === 'undefined' || !text.trim()) return;
       stopListening();
       clearAudio();
@@ -380,85 +444,9 @@ export function useVoice({ lang = 'tr-TR', onPartial, settings }: UseVoiceOption
       const native = (window as any).webkit?.messageHandlers?.chloeMac;
       setError(null);
       if (settings && settings.jarvisSpeechEngine !== 'device') {
-        native?.postMessage({ action: 'stopSpeaking' });
-        window.speechSynthesis?.cancel();
-        const controller = new AbortController(); audioControllerRef.current = controller;
-        setIsPreparingSpeech(true); setIsSpeaking(false);
-        const clean = text.replace(/```[\s\S]*?```/g, ' Kod örneğini ekranda görebilirsin. ').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/https?:\/\/\S+/g, '').replace(/[*#`_]/g, '').trim();
-        const chunks = splitSpeechText(clean);
-        if (!chunks.length) {
-          clearAudio();
-          setIsPreparingSpeech(false);
-          return;
-        }
-        const isCurrentRequest = () => audioControllerRef.current === controller && !controller.signal.aborted;
-        const fail = (cause: unknown) => {
-          if (!isCurrentRequest()) return;
-          clearAudio();
-          setIsSpeaking(false);
-          setIsPreparingSpeech(false);
-          setError(cause instanceof Error ? cause.message : 'Doğal ses üretilemedi.');
-        };
-        const playChunk = async (index: number): Promise<void> => {
-          if (!isCurrentRequest()) return;
-          if (index >= chunks.length) {
-            clearAudio();
-            setIsSpeaking(false);
-            setIsPreparingSpeech(false);
-            opts?.onEnd?.();
-            return;
-          }
-          try {
-            const response = await fetch('/api/voice', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              signal: controller.signal,
-              body: JSON.stringify({
-                text: chunks[index],
-                voice: settings.jarvisCloudVoice,
-                tone: settings.jarvisVoiceTone,
-                settings: settingsForRequest(settings),
-              }),
-            });
-            if (!response.ok) {
-              const data = await response.json();
-              throw new Error(data.error || 'Ses üretilemedi.');
-            }
-            const blob = await response.blob();
-            if (!isCurrentRequest()) return;
-            const url = URL.createObjectURL(blob);
-            audioUrlRef.current = url;
-            const audio = new Audio(url);
-            audioRef.current = audio;
-            audio.onended = () => {
-              if (!isCurrentRequest() || audioRef.current !== audio) return;
-              audio.onended = null;
-              audio.onerror = null;
-              audio.pause();
-              audio.src = '';
-              audioRef.current = null;
-              if (audioUrlRef.current === url) {
-                URL.revokeObjectURL(url);
-                audioUrlRef.current = null;
-              }
-              setIsSpeaking(false);
-              setIsPreparingSpeech(index + 1 < chunks.length);
-              void playChunk(index + 1);
-            };
-            audio.onerror = () => {
-              if (audioRef.current !== audio) return;
-              fail(new Error('Üretilen ses oynatılamadı. Sesi dene düğmesine dokunarak tekrar dene.'));
-            };
-            await audio.play();
-            if (isCurrentRequest() && audioRef.current === audio) {
-              setIsPreparingSpeech(false);
-              setIsSpeaking(true);
-            }
-          } catch (cause: unknown) {
-            fail(cause);
-          }
-        };
-        void playChunk(0);
+        const queue = startCloudSpeech(opts);
+        splitSpeechText(cleanSpeechText(text)).forEach((chunk) => queue?.push(chunk));
+        queue?.finish();
         return;
       }
       setIsPreparingSpeech(false);
@@ -551,7 +539,7 @@ export function useVoice({ lang = 'tr-TR', onPartial, settings }: UseVoiceOption
         setError(cause instanceof Error ? `Sesli yanıt başlatılamadı: ${cause.message}` : 'Sesli yanıt başlatılamadı.');
       }
     },
-    [lang, settings, clearAudio, clearNativeSpeechStartTimer, stopListening]
+    [lang, settings, clearAudio, clearNativeSpeechStartTimer, stopListening, startCloudSpeech]
   );
 
   const stopSpeaking = useCallback(() => {
@@ -591,6 +579,7 @@ export function useVoice({ lang = 'tr-TR', onPartial, settings }: UseVoiceOption
     stopListening,
     openPrivacySettings,
     speak,
+    beginSpeechStream,
     stopSpeaking,
   };
 }

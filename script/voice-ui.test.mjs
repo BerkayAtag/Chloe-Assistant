@@ -16,7 +16,9 @@ function load(relative, imports, globals) {
   }, ...globals });
   return exports;
 }
-const splitSpeechText = load('../src/lib/speech-text.ts', {}, {}).splitSpeechText;
+const speechText = load('../src/lib/speech-text.ts', {}, {});
+const { splitSpeechText } = speechText;
+const speechQueue = load('../src/lib/speech-queue.ts', {}, {});
 
 function orbHarness(state = 'ready', reduced = false) {
   const effects = [], frames = new Map(), observers = [], arcs = [];
@@ -103,7 +105,7 @@ function voiceHarness() {
     useState(value) { const index = states.length; states.push(typeof value === 'function' ? value() : value); return [states[index], (next) => { states[index] = next; }]; },
     useRef: (value) => ({ current: value }), useEffect() {}, useCallback: (fn) => fn,
   };
-  const hook = load('../src/hooks/useVoice.ts', { react: React, '@/lib/settings': { settingsForRequest: (s) => s }, '@/lib/speech-text': { splitSpeechText } }, {
+  const hook = load('../src/hooks/useVoice.ts', { react: React, '@/lib/settings': { settingsForRequest: (s) => s }, '@/lib/speech-text': speechText, '@/lib/speech-queue': speechQueue }, {
     window: { SpeechRecognition: Recognition, speechSynthesis: { cancel() {} }, setTimeout, clearTimeout }, Audio, AbortController,
     URL: { createObjectURL: () => 'blob:unit-fixture', revokeObjectURL() {} },
     fetch: (_url, options) => { requests.push(options); return response.promise; },
@@ -169,7 +171,7 @@ test('native dictation submits the final transcript exactly once', () => {
   const voice = load('../src/hooks/useVoice.ts', {
     react: React,
     '@/lib/settings': { settingsForRequest: (settings) => settings },
-    '@/lib/speech-text': { splitSpeechText },
+    '@/lib/speech-text': speechText, '@/lib/speech-queue': speechQueue,
   }, { window, AbortController, URL: { revokeObjectURL() {} } }).useVoice();
   const cleanups = effects.map((effect) => effect());
   let received = [];
@@ -239,7 +241,7 @@ test('native speech stays in preparing state until macOS reports actual playback
   const voice = load('../src/hooks/useVoice.ts', {
     react: React,
     '@/lib/settings': { settingsForRequest: (settings) => settings },
-    '@/lib/speech-text': { splitSpeechText: (text) => [text] },
+    '@/lib/speech-text': speechText, '@/lib/speech-queue': speechQueue,
   }, { window, AbortController, URL: { revokeObjectURL() {} } }).useVoice({
     settings: { jarvisSpeechEngine: 'device' },
   });
@@ -282,7 +284,7 @@ test('device speech announces preparation, speaking, and completion in order', (
   const voice = load('../src/hooks/useVoice.ts', {
     react: React,
     '@/lib/settings': { settingsForRequest: (settings) => settings },
-    '@/lib/speech-text': { splitSpeechText },
+    '@/lib/speech-text': speechText, '@/lib/speech-queue': speechQueue,
   }, { window, SpeechSynthesisUtterance: Utterance, AbortController, URL: { revokeObjectURL() {} } }).useVoice({
     settings: { jarvisSpeechEngine: 'device' },
   });

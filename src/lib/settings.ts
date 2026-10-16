@@ -59,6 +59,7 @@ export interface Settings {
   savedCustomProviders: SavedCustomProvider[];
   selectedCustomProviderId: string;
   jarvisMode: boolean;
+  jarvisFastMode: boolean;
   jarvisVoiceURI: string;
   jarvisVoiceTone: JarvisVoiceTone;
   jarvisSpeechEngine: 'main' | 'device';
@@ -103,6 +104,7 @@ export const DEFAULT_SETTINGS: Settings = {
   savedCustomProviders: [],
   selectedCustomProviderId: '',
   jarvisMode: false,
+  jarvisFastMode: true,
   jarvisVoiceURI: '',
   jarvisVoiceTone: 'natural',
   jarvisSpeechEngine: 'main',

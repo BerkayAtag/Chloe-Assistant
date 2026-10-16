@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { localRequestOrigin } from '@/lib/request-origin';
+import { normalizeEmail } from '@/lib/email-provider';
 import {
   callbackUrl,
   integrationRequestAllowed,
@@ -22,6 +23,10 @@ export async function GET(
   }
 
   try {
+    const emailInput = request.nextUrl.searchParams.get('email');
+    let email = '';
+    try { email = emailInput ? normalizeEmail(emailInput) : ''; }
+    catch { return NextResponse.json({ error: 'Geçerli bir e-posta adresi yaz.' }, { status: 400 }); }
     const config = oauthConfiguration(rawProvider);
     const baseUrl = oauthBaseUrl(localRequestOrigin(request) || undefined);
     const redirectUri = callbackUrl(baseUrl, rawProvider);
@@ -37,6 +42,7 @@ export async function GET(
       state,
       code_challenge: challenge,
       code_challenge_method: 'S256',
+      ...(email ? { login_hint: email } : {}),
       ...(rawProvider === 'google'
         ? { access_type: 'offline', prompt: 'consent' }
         : { response_mode: 'query', prompt: 'select_account' }),

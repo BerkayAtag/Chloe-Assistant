@@ -1,17 +1,22 @@
 import { lookup } from 'node:dns/promises';
 import https from 'node:https';
 
-function publicAddress(address: string) {
+export function publicAddress(address: string) {
   // IPv6 is deliberately excluded; use a public IPv4 address for this read-only tool.
   const parts = address.split('.').map(Number);
   if (parts.length !== 4 || parts.some((p) => !Number.isInteger(p) || p < 0 || p > 255)) return false;
   const [a, b] = parts;
-  return !(a === 0 || a === 10 || a === 127 || a >= 224 || a === 169 && b === 254 || a === 172 && b >= 16 && b <= 31 || a === 192 && (b === 168 || b === 0) || a === 100 && b >= 64 && b <= 127 || a === 198 && (b === 18 || b === 19));
+  return !(a === 0 || a === 10 || a === 127 || a >= 224 || a === 169 && b === 254 || a === 172 && b >= 16 && b <= 31 || a === 192 && (b === 168 || b === 0 || b === 2) || a === 100 && b >= 64 && b <= 127 || a === 198 && (b === 18 || b === 19 || b === 51) || a === 203 && b === 0 && parts[2] === 113);
 }
 
+export class PublicPageError extends Error { readonly status: number; constructor(message: string, status: number) { super(message); this.status = status; } }
+
 /** Pin the validated DNS address, and validate each redirect before fetching it. */
-async function publicBytes(rawUrl: string, contentType: RegExp, maxBytes: number, parentSignal?: AbortSignal, redirects = 0): Promise<{ bytes: Buffer; mime: string }> {
+async function publicBytes(rawUrl: string, contentType: RegExp, maxBytes: number, parentSignal?: AbortSignal, redirects = 0, sameOrigin?: string, allowUrl?: (url: string) => boolean): Promise<{ bytes: Buffer; mime: string; url: string }> {
   const url = new URL(rawUrl);
+  parentSignal?.throwIfAborted();
+  if (allowUrl && !allowUrl(url.href)) throw new Error('Adres robots.txt ile engellenmiş; istek yapılmadı.');
+  if (sameOrigin && url.origin !== sameOrigin) throw new Error('Tarama sırasında farklı alan adına yönlendirme engellendi. Son adresi doğrudan gir.');
   if (url.protocol !== 'https:' || url.username || url.password || url.port && url.port !== '443' || redirects > 3) throw new Error('Yalnızca herkese açık HTTPS sayfaları okunabilir.');
   const addresses = await lookup(url.hostname, { all: true, family: 4 });
   if (!addresses.length || addresses.some(({ address }) => !publicAddress(address))) throw new Error('Yerel ve özel ağ adresleri okunamaz.');
@@ -24,7 +29,7 @@ async function publicBytes(rawUrl: string, contentType: RegExp, maxBytes: number
     }, (response) => {
       if (response.statusCode && [301, 302, 303, 307, 308].includes(response.statusCode)) { response.resume(); resolve({ location: response.headers.location }); return; }
       const mime = response.headers['content-type']?.split(';')[0] || '';
-      if (response.statusCode !== 200 || !contentType.test(mime)) { response.resume(); reject(new Error(`Dosya türü uygun değil veya indirilemedi (HTTP ${response.statusCode}).`)); return; }
+      if (response.statusCode !== 200 || !contentType.test(mime)) { response.resume(); reject(new PublicPageError(`Dosya türü uygun değil veya indirilemedi (HTTP ${response.statusCode}).`, response.statusCode || 0)); return; }
       const chunks: Buffer[] = []; let size = 0;
       response.on('data', (chunk: Buffer) => { size += chunk.length; if (size > maxBytes) response.destroy(new Error('Dosya boyut sınırını aşıyor.')); else chunks.push(chunk); });
       response.on('error', reject);
@@ -32,9 +37,13 @@ async function publicBytes(rawUrl: string, contentType: RegExp, maxBytes: number
     });
     req.on('error', reject);
   });
-  if (result.location) return publicBytes(new URL(result.location, url).href, contentType, maxBytes, signal, redirects + 1);
+  if (result.location) return publicBytes(new URL(result.location, url).href, contentType, maxBytes, signal, redirects + 1, sameOrigin, allowUrl);
   if (!result.bytes?.length) throw new Error('İndirilen dosya boş.');
-  return { bytes: result.bytes, mime: result.mime || '' };
+  return { bytes: result.bytes, mime: result.mime || '', url: url.href };
+}
+
+export function readPublicText(url: string, signal?: AbortSignal, sameOrigin?: string, allowUrl?: (url: string) => boolean) {
+  return publicBytes(url, /^(text\/(html|plain)|application\/xhtml\+xml)$/, 1024 * 1024, signal, 0, sameOrigin, allowUrl);
 }
 
 export async function readPublicPage(rawUrl: string, signal?: AbortSignal): Promise<string> {
@@ -45,4 +54,10 @@ export async function readPublicPage(rawUrl: string, signal?: AbortSignal): Prom
 /** Generated remote images are downloaded without forwarding API credentials. */
 export function readPublicImage(url: string, signal?: AbortSignal) {
   return publicBytes(url, /^image\/(png|jpeg|webp)$/, 25 * 1024 * 1024, signal);
+}
+
+/** Isolated browser renderer: every resource uses the same pinned public DNS
+ * boundary. It must not issue Chromium's own unvalidated network requests. */
+export function readPublicResource(url: string, signal?: AbortSignal) {
+  return publicBytes(url, /^(?:text\/|image\/|font\/|application\/(?:javascript|x-javascript|json|xml|xhtml\+xml|font-|vnd\.ms-fontobject|octet-stream))/, 5 * 1024 * 1024, signal);
 }

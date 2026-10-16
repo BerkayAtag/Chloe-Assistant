@@ -1,5 +1,44 @@
 const SENTENCE_PUNCTUATION = /[.!?…;:。！？]/u;
 
+export function cleanSpeechText(text: string): string {
+  return text.replace(/```[\s\S]*?```/g, ' Kod örneğini ekranda görebilirsin. ')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/https?:\/\/\S+/g, '')
+    .replace(/[*#`_]/g, '').trim();
+}
+
+/** Keep incomplete words and fenced code until a safe speech boundary exists. */
+export function createSpeechTextBuffer(emit: (text: string) => void) {
+  let pending = '', emitted = false;
+  const drain = (final: boolean) => {
+    while (pending) {
+      let end = 0;
+      // A natural first clause can start TTS while the rest of a long opening
+      // sentence is still being generated. Later clips keep sentence cadence.
+      if (!emitted && !pending.includes('```')) {
+        const clause = /[,;:—](?=\s)/gu;
+        for (const match of pending.matchAll(clause)) {
+          const candidate = match.index! + match[0].length;
+          if (candidate >= 36 && candidate <= 140) { end = candidate; break; }
+        }
+      }
+      for (const match of pending.matchAll(/[.!?…](?=\s)|\n/g)) {
+        if (end) break;
+        const candidate = match.index! + match[0].length;
+        const prefix = pending.slice(0, candidate);
+        if (candidate >= 24 && (prefix.match(/```/g)?.length || 0) % 2 === 0) { end = candidate; break; }
+      }
+      if (!end && pending.length > 500 && !pending.includes('```')) end = pending.lastIndexOf(' ', 500);
+      if (!end && !final) break;
+      if (!end) end = pending.length;
+      const raw = pending.slice(0, end);
+      pending = pending.slice(end).trimStart();
+      const clean = cleanSpeechText(final ? raw.replace(/```[^]*$/g, (code) => (code.match(/```/g)?.length || 0) % 2 ? ' Kod ekranda.' : code) : raw);
+      if (clean) { emitted = true; emit(clean); }
+    }
+  };
+  return { push(delta: string) { pending += delta; drain(false); }, finish() { drain(true); } };
+}
+
 export function splitSpeechText(text: string, maxLength = 3500): string[] {
   if (!Number.isInteger(maxLength) || maxLength < 1) {
     throw new RangeError('Speech chunk length must be a positive integer.');

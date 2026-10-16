@@ -1,6 +1,6 @@
 {
   "name": "chloe-assistant",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -9,10 +9,15 @@
     "lint": "eslint",
     "test:runtime": "node --experimental-strip-types --test script/runtime.test.mjs",
     "test:voice-ui": "node --test script/voice-ui.test.mjs",
+    "test:jarvis": "node --experimental-strip-types --test script/jarvis.test.mjs",
+    "test:jarvis-api": "node script/jarvis-api-qa.mjs",
     "test:connections": "node --experimental-strip-types --test script/connections.test.mjs script/settings-client.test.mjs script/oauth-setup.test.mjs",
     "test:office": "node script/office-qa.mjs",
     "test:skills": "node --experimental-strip-types --test script/skills.test.mjs",
-    "test:codex": "node --experimental-strip-types --test script/codex-workspace.test.mjs"
+    "test:codex": "node --experimental-strip-types --test script/codex-workspace.test.mjs",
+    "test:codex-api": "node script/codex-api-qa.mjs",
+    "test:workbench": "node --experimental-strip-types --test script/workbench.test.mjs",
+    "test:workbench-api": "node script/workbench-api-qa.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.75",

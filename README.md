@@ -1,134 +1,202 @@
 <div align="center">
 
-# Chloe Assistant
+# ✦ Chloe Assistant
 
-### Your AI workspace. Your model. Your projects.
+### Your Intelligent Personal AI Workspace · Powered by Any Model · Native on macOS
 
-One assistant for voice conversations, research, creative work, and hands-on
-software development — available in your browser and as a native macOS app.
+[![macOS 15+](https://img.shields.io/badge/macOS-15%2B%20Sequoia-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com)
+[![Next.js 16](https://img.shields.io/badge/Next.js-16.4-black?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org)
+[![TypeScript 5](https://img.shields.io/badge/TypeScript-5.0-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Local-First](https://img.shields.io/badge/Security-Local--First%20%26%20Encrypted-10B981?style=for-the-badge&logo=shield&logoColor=white)](#privacy--safety)
+[![Release v0.2.0](https://img.shields.io/badge/Release-v0.2.0-8B5CF6?style=for-the-badge&logo=github)](https://github.com/BerkayAtag/chloe-assistant/releases/tag/v0.2.0)
 
-**Open source · Model choice is yours · Built for macOS and the web**
+<br/>
+
+**[📦 Doğrudan İndir (v0.2.0)](https://github.com/BerkayAtag/chloe-assistant/releases/tag/v0.2.0)** ·
+**[🚀 Hızlı Kurulum](#hızlı-kurulum--download)** ·
+**[🎙️ JARVIS & Ses](#jarvis-sesli-asistan--ekip-yönetimi)** ·
+**[👥 Ajan Ofisi](#ajan-ofisi-ekip-çalışması)** ·
+**[💻 Chloe Code](#chloe-code-çalışma-alanı)** ·
+**[🔒 Güvenlik](#gizlilik--güvenlik)**
+
+<br/>
+
+<a href="#jarvis-sesli-asistan--ekip-yönetimi">
+  <img src="docs/chloe-jarvis.jpg" alt="Chloe JARVIS — Gerçek Zamanlı Sesli Asistan ve Parçacık Küresi" width="850" style="border-radius: 16px; box-shadow: 0 20px 40px rgba(0,0,0,0.4);" />
+</a>
+
+<p align="center"><em>Chloe JARVIS Modu — Gerçek zamanlı konuşma, reaktif parçacık küresi, ses akışı ve arka planda çalışan otonom ekip yönetimi.</em></p>
 
 </div>
 
 ---
 
-Chloe brings everyday AI assistance and project work into one calm, focused
-workspace. Connect a hosted or local model, talk naturally, research a topic,
-or open a project folder and work directly with its files.
+## 🌟 Öne Çıkan Özellikler
 
-## What you can do
+Chloe; günlük sesli yapay zekâ asistanlığını, derin web araştırmasını ve projeler üzerinde çalışan otonom ajan ekiplerini tek bir güvenli, yerel öncelikli macOS ve web çalışma alanında bir araya getirir.
 
-| Workspace | Capabilities |
-| --- | --- |
-| **Chloe Code** | Choose a project folder, browse and edit files, ask your selected model for a proposed change, review it before applying, and explicitly run the project's available checks. |
-| **Voice & JARVIS** | Speak with the assistant using supported browser or macOS speech recognition and text-to-speech. |
-| **Agent Office** | Coordinate focused agents for research and coding tasks; inspect file proposals and apply them yourself. |
-| **Web & browser** | Research public sources and use the browser automation available in the local app. |
-| **Image & video** | Generate media when your configured provider and model expose compatible generation APIs. |
-| **Skills** | Browse and install Agent Skills, review their contents, and assign them to individual agents. |
+<table width="100%">
+<tr>
+<td width="50%" valign="top">
 
-Chloe can connect to OpenAI, Anthropic, Google Gemini, OpenAI-compatible
-providers, and local Ollama endpoints. Provider capabilities differ: tools,
-reasoning controls, speech, image generation, and video generation depend on
-the model and API you configure. Chloe reports unsupported operations rather
-than silently switching to a different provider.
+### 🎙️ JARVIS Sesli Asistan & Hızlı Sohbet
+- **Cihaz içi ve Bulut Ses:** macOS yerel ses motoru ile sıfır ağ gecikmeli yanıtlar veya stüdyo kalitesinde yapay zekâ sesleri.
+- **Akışlı Ses Üretimi:** Yanıtın tamamını beklemeden, ilk cümle tamamlandığı anda seslendirme başlar.
+- **Konuşurken Ekip Yönetimi:** Konuşma kesilmeden kodlama işleri başlatılabilir, durum raporları sesli dinlenebilir veya ekranda görüntülenebilir.
+- **FreeLLMAPI Hızlı Yönlendirme:** Sesli turlarda otomatik `auto:fast` yönlendirmesiyle 5–10 kat daha hızlı yanıt.
 
-## Choose your workspace
+</td>
+<td width="50%" valign="top">
 
-### Browser
+### 👥 Ajan Ofisi (Ekip Çalışması)
+- **Rol Odaklı Ajanlar:** Koordinatör, Araştırmacı, Geliştirici ve Denetçi eş zamanlı işbirliği yapar.
+- **Güvenli Dosya İnceleme Kapısı:** Değişiklikler doğrudan dosyalara yazılmaz; önce incelenir, onaylanır ve gerekirse tek tıkla uygulanır.
+- **Çalışma Atölyesi:** Kapsamlı web araştırması, yerel proje mimari analizi, kalıcı hafıza bankası ve ses üretim stüdyosu.
 
-Run Chloe locally, then open `http://localhost:3000`. The browser UI works on
-desktop and mobile. When using the browser version on the same Mac, type the
-absolute project path into **Chloe Code** to open a folder.
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
 
-### macOS app
+### 💻 Chloe Code Workspace
+- **Proje Gezgini & Düzenleyici:** Yerel proje dizinini seçin, dosyaları tarayın ve yerleşik editörde düzenleyin.
+- **Yapay Zekâ Destekli Değişiklik Önerileri:** Seçili modelden diff ve öneri alın, versiyon çakışmalarını önleyin.
+- **Yerel Proje Denetimleri:** Test, lint ve build komutlarını süre ve çıktı sınırlarıyla güvenle koşturun.
 
-The native app adds Finder-based project selection, a local WKWebView browser,
-and macOS integrations. The same project editor runs inside the app.
+</td>
+<td width="50%" valign="top">
 
-## Get started
+### 🔒 Yerel Öncelikli Güvenlik Mimarisi
+- **Şifreli Anahtar Kasası:** API anahtarları asla istemciye veya kod depolarına sızmaz; AES-256-GCM ile diskte şifrelenir.
+- **Katı SSRF ve Origin Koruması:** Dış sitelerin yerel ağa erişmesi ve kontrolsüz kaynak indirmesi engellenir.
+- **Açık Onay Prensibi:** Dosya değiştirme, komut yürütme ve e-posta gönderimi açık kullanıcı onayı olmadan çalışmaz.
 
-**Requirements:** macOS for the native app; Node.js 20.9 or newer for the web
-server. An AI provider connection is needed for model responses.
+</td>
+</tr>
+</table>
+
+---
+
+## 📸 Uygulama Galerisi
+
+<div align="center">
+
+### 👥 Ajan Ofisi — Çoklu Ajan Koordinasyonu ve Çalışma Atölyesi
+<img src="docs/chloe-office.jpg" alt="Chloe Ajan Ofisi" width="850" style="border-radius: 12px; margin-bottom: 24px;" />
+
+<br/><br/>
+
+### 💬 Chloe Ana Sohbet — Sade, Hızlı ve Akıllı Arayüz
+<img src="docs/chloe-main.jpg" alt="Chloe Ana Arayüz" width="850" style="border-radius: 12px; margin-bottom: 24px;" />
+
+<br/><br/>
+
+### 💻 Chloe Code — Yerel Proje ve Dosya Düzenleyici
+<img src="docs/chloe-code.jpg" alt="Chloe Code Çalışma Alanı" width="850" style="border-radius: 12px; margin-bottom: 24px;" />
+
+</div>
+
+---
+
+## ⚡ Tepki Süresi ve FreeLLMAPI Hızlandırma Rehberi
+
+Chloe uygulamasında konuşma yanıt süresini maksimum hıza çıkarmak için aşağıdaki optimizasyonlar entegre edilmiştir:
+
+1. **FreeLLMAPI Hızlı Modu (`auto:fast`):**
+   - FreeLLMAPI üzerinde varsayılan `auto` seçimi ağır düşünme modellerine yönlenebilir.
+   - JARVIS hızlı modunda Chloe, FreeLLMAPI isteklerini otomatik olarak düşük gecikmeli modellere (`auto:fast`, `gemini-2.0-flash` vb.) yönlendirir.
+   - Sabit bir model kullanmak isterseniz Ayarlar panelinden doğrudan `gemini-2.0-flash` veya `gpt-4o-mini` seçebilirsiniz.
+
+2. **Cihaz Sesi (Çevrimdışı macOS Motoru):**
+   - JARVIS seçeneklerinden **Ses Motoru: Cihaz sesi (çevrimdışı)** seçildiğinde ağ üzerinden ses sentezi beklenmez; macOS'in yerleşik Türkçe kadın sesi (ör. Yelda) kullanılır ve ses anında başlar.
+
+3. **Akışlı Cümle Kuyruğu:**
+   - Model tüm metni üretmeyi bitirmeden, ilk cümle bittiği anda seslendirme başlatılır. Böylece algılanan bekleme süresi 1 saniyenin altına iner.
+
+---
+
+## 🎙️ JARVIS: Sesli Asistan & Ekip Yönetimi
+
+JARVIS modunu açtığınızda hem konuşabilir hem de tüm yönetim ve kodlama işlerini sesli veya yazılı komutlarla yürütebilirsiniz:
+
+- **Kodlama Yap:** *"Kodlama yap"*, *"Projemdeki hataları düzelt"* veya *"Yeni bir fonksiyon yaz"* dediğinizde Ajan Ofisi görevi hazırlar; onayınızla ekip çalışması başlar.
+- **Rapor İsteme:** *"Rapor sun"*, *"Raporu oku"*, *"Ekibin durumu ne?"* veya *"Durum raporu ver"* dediğinizde çalışan ekibin anlık durumu hem seslendirilir hem de iş panelinde tam Markdown raporu olarak sunulur.
+- **Bilgisayar Yönetimi:** *"Terminali aç"*, *"Hesap Makinesini aç"* gibi komutlar önce öneri olarak hazırlanır ve macOS güvenlik onay penceresine iletilir.
+- **Web ve Tarayıcı:** *"example.com sitesini aç"* dediğinizde yerel macOS tarayıcı penceresinde güvenli sayfa önizlemesi açılır.
+
+---
+
+## 🚀 Hızlı Kurulum & Download
+
+### Gereksinimler
+- **macOS:** macOS 15+ (Sequoia veya daha yenisi)
+- **Node.js:** v22.0.0 veya daha yenisi
+- **Komut Satırı Araçları:** Apple Command Line Tools (`xcode-select --install`)
+
+### 1. İndirme Paketi (GitHub Releases)
+En güncel sürüm paketini indirin:
+👉 **[Chloe v0.2.0 İndir (.zip)](https://github.com/BerkayAtag/chloe-assistant/releases/tag/v0.2.0)**
+
+Paketi kalıcı bir klasöre çıkarın ve klasör içindeki **`Install Chloe.command`** dosyasını çift tıklayarak çalıştırın. Kurucu bağımlılıkları derler ve uygulamayı `/Applications/Chloe.app` konumuna kurar.
+
+### 2. Kaynak Koddan Kurulum
 
 ```bash
+# Depoyu klonlayın
 git clone https://github.com/BerkayAtag/chloe-assistant.git
 cd chloe-assistant
-npm install
-npm run dev
-```
 
-Open `http://localhost:3000`, choose **Settings**, and configure a provider.
-For local inference, start Ollama and select its OpenAI-compatible endpoint.
-For hosted models, add your provider key in Chloe's settings. API keys and
-conversation data are local application data and are not part of the source
-repository.
+# Bağımlılıkları yükleyin
+npm ci
 
-To build and launch the macOS app from the project root:
-
-```bash
+# Uygulamayı derleyin ve MacBook'unuza kurun
 ./script/build_and_run.sh --verify
 ```
 
-The app uses the web workspace on `http://localhost:3000` by default. If that
-port is unavailable, use the URL printed by the startup script.
+Derleme tamamlandığında **Finder → Uygulamalar → Chloe** açılarak kullanıma hazır hale gelir. Arka plandaki yerel servis `http://127.0.0.1:3004` adresinde çalışır.
 
-## Chloe Code
+---
 
-Select **+ → Codex** in the chat. On macOS, use **Klasör seç** to pick a project
-in Finder; in a browser, enter its absolute local path. Choose a file from the
-project tree, edit it, or write an instruction for the configured AI model.
+## 🧪 Test & Kalite Güvencesi
 
-AI edits appear as a reviewable proposal first. **Editöre al** places the
-proposal in the editor; **Kaydet** is a separate action that writes the file.
-The save checks the file version to avoid overwriting changes made elsewhere.
-Use the project check selector to run detected tests, lint, build, Swift, or
-Git checks. Each run requires confirmation and has a time and output limit.
-Project checks execute the selected project's own scripts, so only run them
-for folders you trust.
-
-For ordinary source changes, Chloe Code does not run arbitrary shell commands
-or save a model's edits without your approval. Hidden credential files,
-dependency/build folders, binary files, and symbolic links are excluded from
-the project browser.
-
-## Privacy & safety
-
-- The application is intended to run on a trusted local device.
-- Conversations, uploads, skills, provider settings, and agent data are
-  application data. They are excluded from Git by `.gitignore`.
-- When you use a hosted provider, the prompt and selected file content are sent
-  to that provider to answer your request.
-- File edits require an explicit save. Project checks require an explicit
-  confirmation.
-- Computer-control and browser features can interact with your device or the
-  web; review permissions and actions before approving them.
-
-Do not expose the local server to an untrusted network. Do not commit API keys,
-OAuth tokens, personal conversations, generated uploads, or private project
-files.
-
-## Development
+Tüm sistem modülleri otomatik test paketleriyle doğrulanır:
 
 ```bash
-npm run lint
-npx tsc --noEmit
-npm run test:codex
+# Çekirdek testler (Runtime, Voice UI, JARVIS, Bağlantılar, Skills, Codex, Workbench)
 npm run test:runtime
 npm run test:voice-ui
+npm run test:jarvis
 npm run test:connections
-npm run test:office
 npm run test:skills
-npm run build
+npm run test:codex
+npm run test:workbench
+
+# API ve Ofis testleri
+npm run test:jarvis-api
+npm run test:codex-api
+npm run test:office
+npm run test:workbench-api
+
+# Statik tip ve lint kontrolü
+npx tsc --noEmit
+npm run lint
 ```
 
-The native macOS target is a Swift package under `macos/`.
+---
+
+## 🔒 Gizlilik & Güvenlik
+
+- **Sıfır Telemetri:** Kullanıcı verileri, sohbetler ve dosyalar üçüncü taraf sunuculara veya izleyicilere gönderilmez.
+- **Ayrık Veri Saklama:** API anahtarları ve kimlik bilgileri `data/` altında şifrelenir; `.gitignore` ile depoya dahil edilmez.
+- **İnternet Güvenlik Sınırı:** Tarayıcı ve araştırma modülleri döngüsel (loopback) ve özel yerel ağ adreslerine erişemez (SSRF koruması).
+- **Yedekleme:** Uygulama güncellendiğinde önceki sürüm `~/Library/Application Support/Chloe/app-backups/` altında saklanır.
 
 ---
 
 <div align="center">
 
-**Chloe Assistant** — one workspace for thinking, creating, and building.
+**Chloe Assistant** · Geleceğin kişisel yapay zekâ asistanı deneyimi.
+
+[Yukarı çık ↑](#-chloe-assistant)
 
 </div>

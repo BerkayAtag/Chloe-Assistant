@@ -5,6 +5,7 @@ import { DEFAULT_AGENTS, ROLE_LABELS, type OfficeAgent, type OfficeRun } from '@
 import { CLOUD_MODEL_SUGGESTIONS, settingsForRequest, modelLabel, type Settings } from '@/lib/settings';
 import { sendNativeAction } from '@/lib/native-bridge';
 import type { InstalledSkill, SkillCatalogSource, SkillSummary } from '@/lib/skills';
+import OfficeWorkbench from './OfficeWorkbench';
 
 async function officeAction(body: Record<string, unknown>) {
   const response = await fetch('/api/office', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -110,7 +111,7 @@ function SkillsManager({ initialSkills, onClose, onChange }: { initialSkills: In
             else setMessage('Önce GitHub skill klasör bağlantısını gir.');
           }}>Bağlantıdaki beceriyi doğrula ve kur</button>
           <section className="max-h-64 space-y-2 overflow-y-auto border-t border-app-border pt-4"><h3 className="text-sm font-semibold">Kurulu beceriler · {skills.length}</h3>
-            {skills.map((skill) => <div key={skill.id} className="flex items-start justify-between gap-3 rounded-lg border border-app-border p-3"><div><p className="text-sm font-medium">{skill.name}</p><p className="mt-1 text-xs text-app-muted">{skill.description}</p></div><button disabled={!!busy} onClick={() => void uninstall(skill.id)} className="shrink-0 text-xs text-app-danger">Kaldır</button></div>)}
+            {skills.map((skill) => <div key={skill.id} className="flex items-start justify-between gap-3 rounded-lg border border-app-border p-3"><div className="min-w-0"><p className="text-sm font-medium">{skill.name}</p><p className="mt-1 text-xs text-app-muted">{skill.description}</p>{skill.bundled && <details className="mt-2 text-xs"><summary>Yerleşik · İçeriği ve kaynağı gör</summary><p>Rolüne göre başlangıçta atanır. Ekip ayarlarından işaretini kaldırarak devre dışı bırakabilirsin.</p><a href={skill.sourceUrl} target="_blank" rel="noreferrer" className="break-all underline">{skill.sourceUrl}</a><p>{skill.license} · Chloe uyarlaması</p><pre className="whitespace-pre-wrap">{skill.content}</pre><p className="break-all">SHA-256: {skill.sha256}</p></details>}</div>{!skill.bundled && <button disabled={!!busy} onClick={() => void uninstall(skill.id)} className="shrink-0 text-xs text-app-danger">Kaldır</button>}</div>)}
             {!skills.length && <p className="text-xs text-app-muted">Henüz kurulmuş beceri yok.</p>}
           </section>
           {message && <p role="status" className="text-xs text-app-muted">{message}</p>}
@@ -183,10 +184,10 @@ function AgentSettings({ agents, settings, skills, initialAgent, onClose, onSave
   </div>;
 }
 
-export default function AgentOffice({ settings, onClose, onJarvis }: { settings: Settings; onClose: () => void; onJarvis: () => void }) {
+export default function AgentOffice({ settings, onClose, onJarvis, initialRunId = '', initialWorkspace = '', returnToCode = false }: { settings: Settings; onClose: () => void; onJarvis: () => void; initialRunId?: string; initialWorkspace?: string; returnToCode?: boolean }) {
   const [agents, setAgents] = useState<OfficeAgent[]>(DEFAULT_AGENTS); const [runs, setRuns] = useState<OfficeRun[]>([]);
   const [skills, setSkills] = useState<InstalledSkill[]>([]);
-  const [runId, setRunId] = useState(''); const [prompt, setPrompt] = useState(''); const [workspace, setWorkspace] = useState('');
+  const [runId, setRunId] = useState(initialRunId); const [prompt, setPrompt] = useState(''); const [workspace, setWorkspace] = useState(initialWorkspace);
   const [web, setWeb] = useState(true); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const [connectionError, setConnectionError] = useState('');
   const [config, setConfig] = useState(false); const [skillsOpen, setSkillsOpen] = useState(false); const [taskId, setTaskId] = useState(''); const [agentFilter, setAgentFilter] = useState('');
@@ -217,7 +218,7 @@ export default function AgentOffice({ settings, onClose, onJarvis }: { settings:
   const task = run?.tasks.find((t) => t.id === taskId);
   const artifact = run?.artifacts.find((a) => a.id === artifactId);
   return <main className="office-shell">
-    <aside className="office-rail"><strong>{settings.assistantName || 'Chloe'}</strong><nav><button onClick={onClose}><MessageSquare size={18}/> Sohbet</button><button aria-current="page"><Users size={18}/> Ajan Ofisi</button><button onClick={onJarvis}><AudioLines size={18}/> JARVIS</button></nav>
+    <aside className="office-rail"><strong>{settings.assistantName || 'Chloe'}</strong><nav><button onClick={onClose}><MessageSquare size={18}/> {returnToCode ? 'Codex’e dön' : 'Sohbet'}</button><button aria-current="page"><Users size={18}/> Ajan Ofisi</button><button onClick={onJarvis}><AudioLines size={18}/> JARVIS</button></nav>
       <div className="office-rail-label">AJANLAR</div>{agents.map((a) => <button className="office-agent-row" key={a.id} onClick={() => { setConfigAgent(a.id); setConfig(true); }}><span className={`office-initial ${a.role}`}>{a.name[0]}</span><span>{a.name}<small>{a.provider === 'inherit' ? modelLabel(settings) : `Ayrı API · ${a.model}`}</small></span><i className={run?.tasks.some((t) => t.agentId === a.id && t.status === 'running') ? 'working' : ''}/></button>)}
       <div className="office-rail-bottom"><FolderOpen size={15}/> Yerel çalışma alanı</div>
     </aside>
@@ -228,6 +229,7 @@ export default function AgentOffice({ settings, onClose, onJarvis }: { settings:
         <div className="office-workspace"><FolderOpen size={16}/><input aria-label="Çalışma klasörü" value={workspace} onChange={(e) => setWorkspace(e.target.value)} placeholder="Yerel dosyalar için proje klasörü (isteğe bağlı)"/><button type="button" onClick={() => { if (!sendNativeAction('chooseWorkspace', {})) setError('Web sürümünde klasörün tam yolunu yaz. Örn. /Users/.../projem'); }}>Klasör seç</button></div>
         <footer><label className="office-check"><input type="checkbox" checked={web} onChange={(e) => setWeb(e.target.checked)}/><Globe size={15}/> Web’de araştır</label><span className="office-budget">En fazla 4 görev · 2 paralel ajan</span><button className="office-primary" type="submit" disabled={busy || running || !prompt.trim()}>{busy ? <LoaderCircle size={16} className="animate-spin"/> : <Play size={16}/>} Ekibi başlat</button></footer>
       </form>
+      <OfficeWorkbench settings={settings} workspace={workspace} onTask={setPrompt}/>
       {(error || connectionError) && <p className="office-error" role="alert">{error || connectionError}</p>}
       <div className="office-run-bar"><label>Çalışmalar<select aria-label="Çalışma geçmişi" value={run?.id || ''} onChange={(e) => { setRunId(e.target.value); setTaskId(''); setArtifactId(''); }}><option value="" disabled>Henüz çalışma yok</option>{runs.map((r) => <option key={r.id} value={r.id}>{LABELS[r.status]} · {r.prompt.slice(0, 65)}</option>)}</select></label>
         {run && <><span className={`office-run-status ${run.status}`}>{LABELS[run.status]}</span>{ACTIVE.includes(run.status) ? <button disabled={busy} onClick={() => action({ action: 'cancel', id: run.id })}><Square size={14}/> Durdur</button> : <><button onClick={download} aria-label="Çalışmayı indir"><Download size={16}/></button><button onClick={() => { setPrompt(run.prompt); setWorkspace(run.workspace); }}>Tekrar kullan</button></>}</>}
@@ -240,7 +242,7 @@ export default function AgentOffice({ settings, onClose, onJarvis }: { settings:
       {run?.error && <p role="alert" className="office-error">{run.error}</p>}
       {task && <section className="office-output"><header><h2>{task.title}</h2><button onClick={() => setTaskId('')} aria-label="Görev ayrıntısını kapat"><X size={16}/></button></header><p>{task.instructions}</p><pre>{task.output || task.error || 'Sonuç bekleniyor…'}</pre></section>}
       {run?.result && <section className="office-output"><header><h2>Ekip sonucu</h2><button onClick={download}><Download size={15}/> İndir</button></header><pre>{run.result}</pre></section>}
-      {!!run?.artifacts.length && <section className="office-output"><h2>Dosya önerileri</h2><p>İçeriği inceleyip uygula. Var olan dosyanın yedeği alınır; sonradan değişen dosyanın üzerine yazılmaz.</p>{run.artifacts.map((a) => <button key={a.id} onClick={() => setArtifactId(a.id)}><FileText size={16}/>{a.path}{a.applied && <Check size={15}/>}<ChevronDown size={15}/></button>)}{artifact && <><pre>{artifact.content}</pre><button className="office-primary" disabled={busy || artifact.applied || ACTIVE.includes(run.status)} onClick={() => action({ action: 'apply', id: run.id, artifactId: artifact.id })}>{artifact.applied ? 'Uygulandı' : 'Bu dosya içeriğini uygula'}</button></>}</section>}
+      {!!run?.artifacts.length && <section className="office-output"><h2>Dosya önerileri</h2><p>İçeriği inceleyip uygula. Var olan dosyanın yedeği alınır; sonradan değişen dosyanın üzerine yazılmaz.</p>{run.artifacts.map((a) => <button key={a.id} onClick={() => setArtifactId(a.id)}><FileText size={16}/>{a.path}{a.applied && <Check size={15}/>}<ChevronDown size={15}/></button>)}{artifact && <><p role="status">Denetim: {artifact.review?.verdict === 'approved' ? 'Kod incelemesi onaylandı; testler çalıştırılmadı.' : artifact.review?.verdict === 'changes_requested' ? 'Düzeltme gerekiyor; uygulama kilitli.' : 'Güncel denetim yok; uygulama kilitli.'}</p>{artifact.review && <p>{artifact.review.summary}</p>}<pre>{artifact.content}</pre><button className="office-primary" disabled={busy || artifact.applied || ACTIVE.includes(run.status) || artifact.review?.verdict !== 'approved'} onClick={() => action({ action: 'apply', id: run.id, artifactId: artifact.id })}>{artifact.applied ? 'Uygulandı' : 'Bu dosya içeriğini uygula'}</button></>}</section>}
       <section className="office-log"><header><h2>Çalışma günlüğü</h2><select aria-label="Günlük ajan filtresi" value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)}><option value="">Tüm ajanlar</option>{agents.map((a) => <option key={a.id}>{a.name}</option>)}</select></header>{run?.events.length ? run.events.filter((event) => !agentFilter || event.agent === agentFilter).map((event, i) => <div className="office-event" key={i}><time>{new Date(event.at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</time><span className="office-initial">{event.agent[0]}</span><div><strong>{event.agent}</strong><p>{event.message}</p></div></div>) : <p className="office-empty">Ekibi başlatınca plan, ajan hareketleri ve sonuçlar burada görünür.</p>}{run && <p className="office-usage">{run.calls} model adımı · {run.tokens.toLocaleString('tr-TR')} token · Çalışmalar bu cihazda saklanır.</p>}</section>
     </section>
     {config && <AgentSettings agents={agents} settings={settings} skills={skills} initialAgent={configAgent} onClose={() => { setConfig(false); setConfigAgent(''); }} onSaved={setAgents}/>}

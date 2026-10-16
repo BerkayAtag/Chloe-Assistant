@@ -3,8 +3,10 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { DEFAULT_AGENTS, type OfficeAgent, type OfficeRun } from './office-types';
 import { isInstalledSkill } from './skills';
+import { defaultSkillIds } from './builtin-skills';
 
-const root = path.join(process.cwd(), 'data', 'office');
+export const officeDirectory = process.env.CHLOE_OFFICE_DIR || path.join(process.cwd(), 'data', 'office');
+const root = officeDirectory;
 type StoredAgent = OfficeAgent & { secret?: string };
 type OfficeData = { agents: StoredAgent[]; runs: OfficeRun[] };
 function prepare() { fs.mkdirSync(root, { recursive: true, mode: 0o700 }); }
@@ -23,6 +25,7 @@ function write(data: OfficeData) {
 }
 function key() {
   prepare(); const file = path.join(root, '.key');
+  if (!fs.existsSync(file) && read().agents.some((agent) => agent.secret)) throw new Error('Ajan kasası anahtarı kayıp. Mevcut kayıtlar korunuyor; yedekten geri yükle.');
   if (!fs.existsSync(file)) { try { fs.writeFileSync(file, crypto.randomBytes(32), { mode: 0o600, flag: 'wx' }); } catch (e) { if (!fs.existsSync(file)) throw e; } }
   return fs.readFileSync(file);
 }
@@ -39,7 +42,7 @@ export function officeAgents(includeSecrets = false): OfficeAgent[] {
   return read().agents.map((stored) => {
     const { secret, ...agent } = stored;
     delete agent.apiKey;
-    return { ...agent, hasKey: !!secret, ...(includeSecrets ? { apiKey: secret ? unseal(secret) : '' } : {}) };
+    return { ...agent, skillIds: agent.skillPresetVersion === 1 || agent.skillIds?.length ? agent.skillIds : defaultSkillIds(agent.role), skillPresetVersion: 1, hasKey: !!secret, ...(includeSecrets ? { apiKey: secret ? unseal(secret) : '' } : {}) };
   });
 }
 export function saveOfficeAgents(input: unknown) {
@@ -68,7 +71,7 @@ export function saveOfficeAgents(input: unknown) {
     if (skillIds.length > 5 || skillIds.some((skillId) => typeof skillId !== 'string' || !isInstalledSkill(skillId))) {
       throw new Error('Ajan beceri ataması geçersiz veya kurulu olmayan bir beceri seçildi.');
     }
-    return { id, name: (a.name as string).trim(), role: a.role as OfficeAgent['role'], provider, model: (a.model as string).trim(), baseUrl: (a.baseUrl as string).trim(), instructions: a.instructions as string, enabled: a.enabled !== false, supportsTools: a.supportsTools !== false, skillIds, secret };
+    return { id, name: (a.name as string).trim(), role: a.role as OfficeAgent['role'], provider, model: (a.model as string).trim(), baseUrl: (a.baseUrl as string).trim(), instructions: a.instructions as string, enabled: a.enabled !== false, supportsTools: a.supportsTools !== false, skillIds, skillPresetVersion: 1, secret };
   });
   if (next.filter((a) => a.enabled && a.role === 'coordinator').length !== 1 || !next.some((a) => a.enabled && a.role !== 'coordinator')) throw new Error('Bir koordinatör ve en az bir çalışan ajan etkin olmalı.');
   data.agents = next; write(data); return officeAgents();

@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     if (body.instruction.length > MAX_INSTRUCTION_LENGTH) {
       return NextResponse.json({ error: 'Talimat 8.000 karakteri aşamaz.' }, { status: 400 });
     }
-    if (typeof body.source !== 'string' || !body.source.trim()) {
+    if (typeof body.source !== 'string') {
       return NextResponse.json({ error: 'Önce düzenlenecek bir kod dosyası aç.' }, { status: 400 });
     }
     if (body.source.length > MAX_SOURCE_LENGTH) {
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
       prompt: `Dosya adı: ${filename}\n\nKullanıcı talimatı:\n${body.instruction.trim()}\n\nDosyanın mevcut içeriği:\n<source>\n${body.source}\n</source>\n\nŞimdi dosyanın düzenlenmiş tam içeriğini döndür.`,
     });
 
-    const source = result.text.trim().replace(/^```(?:[\w.+-]+)?\s*\n/u, '').replace(/\n```\s*$/u, '');
+    const source = result.text.replace(/^\s*```(?:[\w.+-]+)?[^\S\n]*\n/u, '').replace(/\n```\s*$/u, '');
     if (!source) throw new Error('Model boş bir düzenleme döndürdü.');
     return NextResponse.json({ success: true, source });
   } catch (error: unknown) {

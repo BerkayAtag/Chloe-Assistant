@@ -525,7 +525,7 @@ export default function Sidebar({
               <div className="mt-4 mx-1 flex items-start gap-2 text-[11px] text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-night-850/60 border border-gray-200 dark:border-night-750 rounded-lg p-2.5">
                 <Brain size={14} className="shrink-0 mt-0.5 text-app-accent" />
                 <span>
-                  Asistan tüm geçmiş konuşmaları hatırlar; sohbetlerde bu bağlamı kullanır.
+                  İlgili geçmiş konuşmalar ve kayıtlı hafıza, bağlam sınırları içinde yanıtlara eklenir.
                 </span>
               </div>
 

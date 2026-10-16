@@ -4,7 +4,9 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 const base = process.env.CHLOE_TEST_URL || 'http://127.0.0.1:3004';
+const officeDir = process.env.CHLOE_OFFICE_DIR || 'data/office';
 let count = 0;
 const check = (label, condition) => { assert.ok(condition, label); console.log('PASS', label); count++; };
 async function api(body) {
@@ -18,6 +20,7 @@ assert.ok(!original.runs.some((r) => ['planning', 'running'].includes(r.status))
 const keysSeen = new Set();
 let behavior = 'normal';
 let toolRequests = 0;
+let comparedOriginalAndProposal = false;
 const server = http.createServer(async (request, response) => {
   let raw = ''; for await (const chunk of request) raw += chunk;
   const body = JSON.parse(raw); const key = request.headers.authorization;
@@ -25,16 +28,21 @@ const server = http.createServer(async (request, response) => {
   keysSeen.add(key);
   const prompt = body.messages.filter((m) => m.role === 'user').at(-1)?.content || '';
   let content = 'Görev tamamlandı. QA denetimi geçti.'; let toolCalls;
-  if (prompt.includes('Yalnızca JSON')) {
+  if (prompt.includes('ARTIFACT_REVIEW_GATE')) {
+    if (prompt.includes('"before":"QA original"') && prompt.includes('"proposed":"QA changed content"')) comparedOriginalAndProposal = true;
+    content = JSON.stringify({ reviews: [{ path: 'note.txt', verdict: behavior === 'file-rejected' ? 'changes_requested' : 'approved', summary: 'QA synthetic review. Tests not executed by agent.' }] });
+  } else if (prompt.includes('Yalnızca JSON')) {
     if (behavior === 'cancel') await new Promise((resolve) => setTimeout(resolve, 5000));
     content = behavior === 'invalid' ? 'not a plan' : JSON.stringify({ tasks: [
       { id: 't1', agentId: 'qa-worker', title: 'İnceleme', instructions: 'QA incelemesi', dependsOn: [] },
       { id: 't2', agentId: 'qa-worker', title: 'Denetim', instructions: 'QA denetimi', dependsOn: ['t1'] },
     ] });
-  } else if (behavior === 'file' && prompt.includes('Görevin: QA incelemesi')) {
+  } else if (behavior === 'fallback' && prompt.includes('CODEX_FILE_PROPOSAL:')) {
+    content = JSON.stringify({ path: 'note.txt', content: 'QA fallback code proposal' });
+  } else if (behavior.startsWith('file') && prompt.includes('Görevin: QA incelemesi')) {
     const previous = body.messages.filter((m) => m.role === 'tool');
-    if (previous.length === 0) toolCalls = [{ id: 'qa-read', type: 'function', function: { name: 'readFile', arguments: JSON.stringify({ path: 'note.txt' }) } }];
-    if (previous.length === 1) toolCalls = [{ id: 'qa-propose', type: 'function', function: { name: 'proposeFile', arguments: JSON.stringify({ path: 'note.txt', content: 'QA changed content' }) } }];
+    if (previous.length === 0) toolCalls = [{ id: 'qa-read', type: 'function', function: { name: 'readFile', arguments: JSON.stringify({ path: path.join(await fs.realpath(folder), 'note.txt') }) } }];
+    if (previous.length === 1) toolCalls = [{ id: 'qa-propose', type: 'function', function: { name: 'proposeFile', arguments: JSON.stringify({ path: path.join(await fs.realpath(folder), 'note.txt'), content: 'QA changed content' }) } }];
   } else if (behavior === 'unsafe' && prompt.includes('Görevin: QA incelemesi') && !body.messages.some((m) => m.role === 'tool')) {
     toolCalls = [{ id: 'qa-escape', type: 'function', function: { name: 'readFile', arguments: JSON.stringify({ path: '../outside.txt' }) } }];
   }
@@ -64,7 +72,7 @@ try {
   const saved = await api({ action: 'saveAgents', agents });
   check('separate agent settings saved', saved.status === 200);
   check('keys absent from API responses', !JSON.stringify(await api()).includes('qa-coordinator-only') && saved.agents.every((a) => a.hasKey && !a.apiKey));
-  const store = await fs.readFile('data/office/office.json', 'utf8');
+  const store = await fs.readFile(path.join(officeDir, 'office.json'), 'utf8');
   check('keys encrypted on disk', !store.includes('qa-coordinator-only') && !store.includes('qa-worker-only'));
   const changedProvider = await api({ action: 'saveAgents', agents: saved.agents.map((a) => a.id === 'qa-worker' ? { ...a, provider: 'anthropic', model: 'claude-test', baseUrl: '' } : a) });
   check('agent provider switch cannot reuse old key', changedProvider.status === 200 && !changedProvider.agents.find((a) => a.id === 'qa-worker').hasKey);
@@ -88,16 +96,36 @@ try {
   check('background work cancelled', (await settled(cancelId)).status === 'cancelled');
   const invalid = await settled(await start('invalid'));
   check('invalid model plan fails visibly', invalid.status === 'failed' && !!invalid.error);
-  const fileRun = await settled(await start('file', folder));
+  behavior = 'file';
+  const hash = createHash('sha256').update('QA original').digest('hex');
+  check('Codex rejects stale editor context', (await api({ action: 'start', prompt: 'QA Codex stale', workspace: folder, focusFile: 'note.txt', expectedHash: '0'.repeat(64) })).status === 400);
+  const focus = await api({ action: 'start', prompt: 'QA Codex team handoff', workspace: folder, focusFile: 'note.txt', expectedHash: hash, webSearch: false });
+  if (focus.run?.id) ids.push(focus.run.id);
+  check('Codex hands off the exact workspace and file', focus.status === 202 && focus.run.focusFile === 'note.txt' && focus.run.workspace === await fs.realpath(folder));
+  const fileRun = await settled(focus.run.id);
   check('file tool produces proposal', fileRun.status === 'completed' && fileRun.artifacts.length === 1);
+  check('final review compares original and proposal and reports deterministic write state', comparedOriginalAndProposal && fileRun.result.startsWith('UYGULAMA DURUMU:'));
   check('no automatic file overwrite', await fs.readFile(path.join(folder, 'note.txt'), 'utf8') === 'QA original');
   const artifact = fileRun.artifacts[0];
   await fs.writeFile(path.join(folder, 'note.txt'), 'QA external modification');
   check('concurrent file modification protected', (await api({ action: 'apply', id: fileRun.id, artifactId: artifact.id })).status === 400);
   await fs.writeFile(path.join(folder, 'note.txt'), 'QA original');
   check('reviewed change can be applied', (await api({ action: 'apply', id: fileRun.id, artifactId: artifact.id })).status === 200 && await fs.readFile(path.join(folder, 'note.txt'), 'utf8') === 'QA changed content');
-  check('original file backed up', await fs.readFile(`data/office/backups/${fileRun.id}/${artifact.id}`, 'utf8') === 'QA original');
+  check('original file backed up', await fs.readFile(path.join(officeDir, 'backups', fileRun.id, artifact.id), 'utf8') === 'QA original');
   check('duplicate apply rejected', (await api({ action: 'apply', id: fileRun.id, artifactId: artifact.id })).status === 400);
+  const currentHash = createHash('sha256').update('QA changed content').digest('hex');
+  const rejected = await settled(await start('file-rejected', folder));
+  check('negative final review prevents successful completion', rejected.status === 'failed' && rejected.artifacts[0]?.review?.verdict === 'changes_requested');
+  check('negative final review blocks file application', (await api({ action: 'apply', id: rejected.id, artifactId: rejected.artifacts[0].id })).status === 400);
+  for (const mode of ['fallback', 'missing-proposal']) {
+    behavior = mode;
+    const launched = await api({ action: 'start', prompt: 'QA Codex proposal ' + mode, workspace: folder, focusFile: 'note.txt', expectedHash: currentHash, webSearch: false });
+    assert.equal(launched.status, 202); ids.push(launched.run.id);
+    const result = await settled(launched.run.id);
+    check(mode === 'fallback' ? 'text-only Codex output becomes a reviewed file proposal' : 'missing Codex code cannot falsely report completed', mode === 'fallback'
+      ? result.status === 'completed' && result.artifacts[0]?.content === 'QA fallback code proposal' && result.tasks.some((t) => t.id === 'codex-final-review')
+      : result.status === 'failed' && !!result.error && result.artifacts.length === 0);
+  }
   const foreign = await fetch(base + '/api/office', { method: 'POST', headers: { Origin: 'https://untrusted.example', 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'cancel', id: 'none' }) });
   check('cross-origin mutation rejected', foreign.status === 403);
   const foreignBrowser = await fetch(base + '/api/browser', { method: 'POST', headers: { Origin: 'https://untrusted.example', 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'navigate', url: 'https://example.com' }) });
@@ -113,6 +141,6 @@ try {
   server.closeAllConnections(); await new Promise((resolve) => server.close(resolve));
   // Remove only this test's temporary files and its backup folders.
   await fs.rm(folder, { recursive: true });
-  for (const id of ids) await fs.rm(path.join('data/office/backups', id), { recursive: true, force: true });
+  for (const id of ids) await fs.rm(path.join(officeDir, 'backups', id), { recursive: true, force: true });
 }
 console.log(`TOTAL ${count} passed; test team/runs/files removed, original team restored.`);

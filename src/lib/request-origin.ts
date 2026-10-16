@@ -14,3 +14,15 @@ export function localRequestAllowed(request: Request): boolean {
   const origin = request.headers.get('origin');
   return !!actual && (!origin || origin === actual);
 }
+
+/** Central browser boundary, including legacy routes without their own guard.
+ * OAuth GET callbacks retain provider redirects; state + cookie validation is
+ * still performed by the callback route. CLI requests have no Fetch Metadata. */
+export function apiRequestAllowed(request: Request): boolean {
+  if (!localRequestAllowed(request)) return false;
+  const site = request.headers.get('sec-fetch-site');
+  if (site !== 'cross-site' && site !== 'same-site') return true;
+  const url = new URL(request.url);
+  return request.method === 'GET' && /^\/api\/integrations\/callback\/(?:google|microsoft)$/.test(url.pathname) &&
+    request.headers.get('sec-fetch-mode') === 'navigate';
+}

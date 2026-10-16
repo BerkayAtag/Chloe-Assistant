@@ -5,8 +5,8 @@ import {
   timingSafeEqual,
 } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { providerSetup, type IntegrationProvider } from './oauth-setup';
+import { dirname, join } from 'node:path';
+import { oauthTokenFile, oauthTokenKey, providerSetup, type IntegrationProvider } from './oauth-setup';
 
 export { providerSetup };
 export type { IntegrationProvider };
@@ -23,7 +23,6 @@ type EncryptedToken = { iv: string; tag: string; data: string };
 type StoredIntegration = { token: EncryptedToken };
 type IntegrationStore = Partial<Record<IntegrationProvider, StoredIntegration>>;
 
-const DATA_FILE = join(process.cwd(), 'data', 'jarvis-integrations.json');
 const GOOGLE_SCOPES = [
   'openid',
   'email',
@@ -46,11 +45,7 @@ const MICROSOFT_SCOPES = [
 ];
 
 function encryptionKey(): Buffer {
-  const encoded = process.env.JARVIS_TOKEN_ENCRYPTION_KEY;
-  if (!encoded) throw new Error('JARVIS_TOKEN_ENCRYPTION_KEY eksik. OAuth erişim anahtarlarını güvenle saklamak için 32 baytlık Base64 anahtar oluştur.');
-  const key = Buffer.from(encoded, 'base64');
-  if (key.length !== 32) throw new Error('JARVIS_TOKEN_ENCRYPTION_KEY geçersiz. 32 baytlık Base64 anahtar olmalı.');
-  return key;
+  return oauthTokenKey();
 }
 
 function encrypt(value: OAuthTokenSet): EncryptedToken {
@@ -79,6 +74,7 @@ function decrypt(value: EncryptedToken): OAuthTokenSet {
 }
 
 function readStore(): IntegrationStore {
+  const DATA_FILE = existsSync(oauthTokenFile()) ? oauthTokenFile() : join(process.cwd(), 'data', 'jarvis-integrations.json');
   if (!existsSync(DATA_FILE)) return {};
   const data: unknown = JSON.parse(readFileSync(DATA_FILE, 'utf8'));
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
@@ -88,7 +84,8 @@ function readStore(): IntegrationStore {
 }
 
 function writeStore(store: IntegrationStore): void {
-  const directory = join(process.cwd(), 'data');
+  const DATA_FILE = oauthTokenFile();
+  const directory = dirname(DATA_FILE);
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const temporary = `${DATA_FILE}.${randomBytes(6).toString('hex')}.tmp`;
   writeFileSync(temporary, JSON.stringify(store), { encoding: 'utf8', mode: 0o600 });
@@ -157,7 +154,7 @@ export function oauthConfiguration(provider: IntegrationProvider) {
 export function saveIntegration(provider: IntegrationProvider, token: OAuthTokenSet): void {
   const store = readStore();
   const previous = store[provider] ? decrypt(store[provider]!.token) : null;
-  const preserved = token.refreshToken || previous?.refreshToken || '';
+  const preserved = token.refreshToken || (previous?.accountEmail.toLowerCase() === token.accountEmail.toLowerCase() ? previous.refreshToken : '') || '';
   if (!preserved) throw new Error('Sağlayıcı yenileme anahtarı vermedi. Erişimi yenileyip çevrimdışı erişime izin ver.');
   store[provider] = {
     token: encrypt({ ...token, refreshToken: preserved }),
