@@ -2,7 +2,7 @@ import type { Settings } from './settings';
 
 export function modelSecrets(settings: Settings): string[] {
   const profiles = Array.isArray(settings.savedCustomProviders) ? settings.savedCustomProviders : [];
-  return [settings.apiKey, settings.jarvisSpeechApiKey, ...(settings.savedApiKeys || []).map((key) => key.apiKey), ...Object.values(settings.builtinConnections || {}).map((p) => p?.apiKey), ...profiles.map((provider) => provider?.apiKey)].filter((key): key is string => typeof key === 'string' && !!key);
+  return [settings.apiKey, settings.jarvisSpeechApiKey, settings.jarvisApiKey, ...(settings.savedApiKeys || []).map((key) => key.apiKey), ...Object.values(settings.builtinConnections || {}).map((p) => p?.apiKey), ...profiles.map((provider) => provider?.apiKey)].filter((key): key is string => typeof key === 'string' && !!key);
 }
 
 /** Show provider diagnostics, never request headers or credentials. */

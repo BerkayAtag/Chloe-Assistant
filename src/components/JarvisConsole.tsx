@@ -14,7 +14,6 @@ import {
   Minimize2,
   Mic,
   MicOff,
-  Play,
   Settings2,
   Send,
   ShieldCheck,
@@ -25,9 +24,10 @@ import {
   Square,
   Users,
 } from 'lucide-react';
-import { modalityStatus, type JarvisVoiceTone, type Settings } from '@/lib/settings';
+import type { JarvisVoiceTone, Settings } from '@/lib/settings';
 import VoiceOrb from '@/components/VoiceOrb';
-import { jarvisModelSettings } from '@/lib/jarvis-model';
+import JarvisSettingsModal from '@/components/JarvisSettingsModal';
+import { jarvisSpeechSettings } from '@/lib/jarvis-model';
 import type { FemaleSpeechVoice } from '@/hooks/useVoice';
 
 type Integration = {
@@ -69,7 +69,7 @@ type JarvisConsoleProps = {
   onSettingsChange: (patch: Partial<Settings>) => void;
   onOpenOffice: () => void;
   workPanel?: ReactNode;
-  timing?: { firstTokenMs?: number; totalMs?: number; audioStartMs?: number; servedModel?: string };
+  timing?: { firstTokenMs?: number; totalMs?: number; audioStartMs?: number; servedModel?: string; connection?: string };
   speechIsOnDevice: boolean | null;
   isThinking: boolean;
   speechSupported: boolean;
@@ -78,6 +78,7 @@ type JarvisConsoleProps = {
   error: string | null;
   onExit: () => void;
   onToggleMic: () => void;
+  onFinishListening: () => void;
   onOpenVoiceSettings: (kind: 'speech' | 'microphone') => void;
   onToggleVoice: () => void;
   voiceEnabled: boolean;
@@ -115,7 +116,6 @@ export default function JarvisConsole({
   onOpenOffice,
   workPanel,
   timing,
-  speechIsOnDevice,
   isThinking,
   speechSupported,
   transcript,
@@ -123,6 +123,7 @@ export default function JarvisConsole({
   error,
   onExit,
   onToggleMic,
+  onFinishListening,
   onOpenVoiceSettings,
   onToggleVoice,
   voiceEnabled,
@@ -139,12 +140,9 @@ export default function JarvisConsole({
 }: JarvisConsoleProps) {
   const [panel, setPanel] = useState<'voice' | 'integrations' | 'mail' | 'calendar'>('voice');
   const [focusMode, setFocusMode] = useState(false);
-  const [showVoiceSetup, setShowVoiceSetup] = useState(false);
+  const [showJarvisSettings, setShowJarvisSettings] = useState(false);
   const cloudVoice = settings.jarvisSpeechEngine !== 'device';
-  const speech = modalityStatus(settings, 'speech');
-  const geminiVoice = settings.provider === 'cloud' && settings.cloudProvider === 'gemini';
-  const cloudVoices = geminiVoice ? ['Kore', 'Aoede', 'Leda', 'Sulafat', 'Zephyr', 'Achernar'] : [...new Set([settings.customSpeechVoice || 'nova', 'nova', 'shimmer', 'alloy'])];
-  const voiceOptions = cloudVoice ? speech.supported ? cloudVoices.map((name) => ({ voiceURI: name, name })) : [] : femaleVoices;
+  const speechResolution = jarvisSpeechSettings(settings);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [integrationRefresh, setIntegrationRefresh] = useState(0);
   const [loadingIntegrations, setLoadingIntegrations] = useState(false);
@@ -416,7 +414,7 @@ export default function JarvisConsole({
           </div>
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold tracking-wide">{assistantName} <span className="font-normal text-app-muted">/ JARVIS</span></div>
-            <div className="truncate text-xs text-app-muted">{modelName}</div>
+            <div className="truncate text-xs text-app-muted">{timing?.connection ? `Son yanıt: ${timing.connection}` : modelName}</div>
           </div>
         </div>
 
@@ -469,6 +467,7 @@ export default function JarvisConsole({
             </div>
           )}
           {!focusMode && timing && Object.keys(timing).length > 0 && <p className="jarvis-timing">
+            {timing.connection && <span className="block">Yanıt bağlantısı: {timing.connection}</span>}
             {timing.firstTokenMs !== undefined && `İlk metin: ${(timing.firstTokenMs / 1000).toFixed(1)} sn · `}
             {timing.audioStartMs !== undefined && `İlk ses: ${(timing.audioStartMs / 1000).toFixed(1)} sn · `}
             {timing.totalMs !== undefined && `Metin tamamı: ${(timing.totalMs / 1000).toFixed(1)} sn`}
@@ -506,6 +505,10 @@ export default function JarvisConsole({
             </button>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-3">
+            {isListening && <button type="button" onClick={onFinishListening}
+              className="rounded-full bg-app-accent px-4 py-2 text-xs font-medium text-app-bg">
+              Bitir ve gönder
+            </button>}
             <button type="button" onClick={onToggleHandsFree} aria-pressed={handsFree}
               className={`rounded-full border px-3 py-1.5 text-xs ${handsFree ? 'border-app-accent bg-app-accent-soft text-app-accent' : 'border-app-border text-app-muted'}`}>
               {handsFree ? 'Sürekli dinleme açık' : 'Sürekli dinlemeyi aç'}
@@ -513,75 +516,20 @@ export default function JarvisConsole({
             <span className="text-[11px] text-app-muted">Ses AI tarafından üretilir</span>
           </div>
           {!focusMode && (
-            <details className="jarvis-options">
-              <summary>Ses ve davranış ayarları</summary>
-              <div className="jarvis-options-body custom-scrollbar">
-          <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={settings.jarvisFastMode !== false} onChange={(event) => onSettingsChange({ jarvisFastMode: event.target.checked })}/>Hızlı konuşma: kısa yanıt, sınırlı yakın geçmiş, düşük düşünme süresi</label>
-          <p className="text-xs text-app-muted">Ana API sesi ilk cümle gelirken hazırlanır. Uzun kodlama ve rapor işleri iş panelinde ekip olarak çalışır. Cihaz sesi ağ beklemez; ses kalitesi yüklü sese bağlıdır.</p>
-          {jarvisModelSettings(settings).customModel !== settings.customModel && <p className="text-xs text-app-muted">Yalnız hızlı sesli sohbet: FreeLLMAPI auto → auto:fast. Ekip ve kodlama ayarları değişmez. Sabit model istersen Ayarlar’dan seçebilirsin.</p>}
-          <div className="flex w-full max-w-3xl flex-wrap items-center justify-center gap-3 rounded-2xl border border-app-border bg-app-surface px-3 py-2.5 sm:gap-4">
-            <label className="flex items-center gap-2 text-xs text-app-muted"><span>Ses motoru</span><select aria-label="Ses motoru" value={settings.jarvisSpeechEngine} onChange={(e) => { onCancel(); onSettingsChange({ jarvisSpeechEngine: e.target.value as Settings['jarvisSpeechEngine'] }); }} className="rounded-lg border border-app-border bg-app-surface px-2.5 py-1.5 text-xs text-app-text"><option value="main">Ana API · {speech.label}</option><option value="device">Cihaz sesi (çevrimdışı)</option></select></label>
-            <label className="flex items-center gap-2 text-xs text-app-muted">
-              <span>Ses</span>
-              <select
-                value={cloudVoice ? geminiVoice ? settings.jarvisCloudVoice : settings.customSpeechVoice : femaleVoices.some((voice) => voice.voiceURI === selectedVoiceURI) ? selectedVoiceURI : femaleVoices[0]?.voiceURI || ''}
-                onChange={(event) => cloudVoice ? onSettingsChange(geminiVoice ? { jarvisCloudVoice: event.target.value } : { customSpeechVoice: event.target.value }) : onVoiceChange(event.target.value)}
-                disabled={!voiceOptions.length}
-                aria-label="Konuşma sesi"
-                className="max-w-44 rounded-lg border border-app-border bg-app-surface px-2.5 py-1.5 text-xs text-app-text outline-none focus:border-app-accent/30 disabled:opacity-50"
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <p className="text-[11px] text-app-muted">
+                Ses: <span className="font-medium text-app-text">{cloudVoice ? (speechResolution.dedicated ? 'Yapay zeka sesi · ayrı API' : 'Yapay zeka sesi') : 'Cihaz sesi (çevrimdışı)'}</span>
+                <span className="mx-1.5">·</span>
+                Hızlı yanıt: <span className="font-medium text-app-text">{!settings.jarvisProvider || settings.jarvisProvider === 'inherit' ? 'Ana bağlantı' : 'Jarvis özel bağlantı'}</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowJarvisSettings(true)}
+                className="inline-flex items-center gap-2 rounded-xl border border-app-border px-3 py-1.5 text-xs text-app-muted transition hover:bg-app-surface hover:text-app-text"
               >
-                {voiceOptions.length ? voiceOptions.map((voice) => (
-                  <option key={voice.voiceURI} value={voice.voiceURI}>{voice.name}</option>
-                )) : <option value="">Ses bulunamadı</option>}
-              </select>
-            </label>
-            <span aria-hidden="true" className="hidden h-5 w-px bg-app-surface sm:block" />
-            <div className="flex items-center gap-1.5" role="group" aria-label="Ses tonlaması">
-              <span className="mr-1 text-xs text-app-muted">Ton</span>
-              {([
-                ['natural', 'Doğal'],
-                ['warm', 'Sıcak'],
-                ['calm', 'Sakin'],
-              ] as const).map(([tone, label]) => (
-                <button
-                  key={tone}
-                  type="button"
-                  onClick={() => onVoiceToneChange(tone)}
-                  aria-pressed={voiceTone === tone}
-                  className={`rounded-lg px-2.5 py-1.5 text-xs transition ${voiceTone === tone ? 'bg-app-accent-soft text-app-accent' : 'text-app-muted hover:bg-app-surface hover:text-app-text'}`}
-                >
-                  {label}
-                </button>
-              ))}
+                <Settings2 size={14} /> Jarvis ayarları
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={onPreviewVoice}
-              disabled={!voiceOptions.length || isPreparingSpeech}
-              aria-label="Seçili sesi dinle"
-              title="Seçili kadın sesiyle örnek dinle"
-              className="inline-flex items-center rounded-lg border border-app-border p-2 text-app-muted transition hover:bg-app-surface hover:text-app-text disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Play size={15} /><span className="ml-2">Sesi dene</span>
-            </button>
-          </div>
-          {!cloudVoice && !femaleVoices.length && (
-            <p className="max-w-xl text-xs leading-5 text-app-warning">
-              Bu cihazda tanınan Türkçe kadın sesi bulunamadı. Sistem ayarlarından Türkçe bir kadın sesi yükleyince burada görünecek; JARVIS erkek ya da varsayılan robotik sese geçmez.
-            </p>
-          )}
-          <p className="max-w-xl text-[11px] leading-5 text-app-muted">
-            {cloudVoice ? `${speech.detail} Ses AI tarafından üretilir. Ton desteği sağlayıcıya bağlıdır.` : 'Cihaz sesi çevrimdışı çalışır. Ana API seçilirse ses yalnızca seçili sağlayıcından istenir.'}
-          </p>
-          <button type="button" className="text-xs text-app-muted underline underline-offset-4" onClick={() => setShowVoiceSetup(!showVoiceSetup)}>Ses bağlantısı ve asistan davranışı</button>
-          {showVoiceSetup && <div className="office-agent-form w-full max-w-2xl text-left"><p className="text-xs text-app-muted">Ses bağlantısı ana modelin API adresini ve anahtarını izler. Özel API ses modeli ve ses kimliği Ayarlar → Ses ve medya modelleri bölümünden değiştirilebilir. Eski ayrı Gemini ses anahtarı artık kullanılmaz.</p><label>Nasıl konuşmamı istersin?<textarea rows={3} maxLength={4000} value={settings.jarvisInstructions} onChange={(e) => onSettingsChange({ jarvisInstructions: e.target.value })} placeholder="Örn. Samimi ve sakin konuş. Kısa yanıt ver, gerektiğinde ayrıntıyı sor."/></label></div>}
-
-                <p className="text-[11px] leading-5 text-app-muted">
-                  {speechIsOnDevice === true ? 'Konuşma cihaz üzerinde metne çevrilir.' : 'Konuşma tanıma, sistemine göre Apple veya tarayıcının ses hizmetini kullanabilir.'}
-                  {' '}Yalnızca tanınan metin seçtiğin modele gönderilir. Ses bu uygulamada saklanmaz.
-                </p>
-              </div>
-            </details>
           )}
           <form className="jarvis-composer" onSubmit={(event) => {
             event.preventDefault();
@@ -597,6 +545,20 @@ export default function JarvisConsole({
               className="rounded-xl bg-app-accent p-2.5 text-app-on-accent disabled:opacity-40"><Send size={17}/></button>
           </form>
           {!speechSupported && <p className="text-xs text-app-warning">Bu ortamda ses tanıma bulunamadı. Buradan yazarak devam edebilirsin.</p>}
+          <JarvisSettingsModal
+            isOpen={showJarvisSettings}
+            onClose={() => setShowJarvisSettings(false)}
+            settings={settings}
+            onSettingsChange={onSettingsChange}
+            femaleVoices={femaleVoices}
+            selectedVoiceURI={selectedVoiceURI}
+            voiceTone={voiceTone}
+            onVoiceChange={onVoiceChange}
+            onVoiceToneChange={onVoiceToneChange}
+            onPreviewVoice={onPreviewVoice}
+            onOpenVoiceSettings={onOpenVoiceSettings}
+            onCancelSpeech={onCancel}
+          />
         </section>
       ) : panel === 'integrations' ? (
         <section className="relative z-10 mx-auto w-full max-w-5xl flex-1 overflow-y-auto px-5 py-8 md:px-10">

@@ -11,6 +11,7 @@ function load(relative, imports, globals) {
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   const exports = {};
   vm.runInNewContext(code, { exports, require: (name) => {
+    if (name === '@/lib/pcm-player') return { playPcmResponse: async () => { throw Error('PCM playback needs its dedicated tests'); } };
     if (!(name in imports)) throw Error(`Unexpected import ${name}`);
     return imports[name];
   }, ...globals });
@@ -19,6 +20,8 @@ function load(relative, imports, globals) {
 const speechText = load('../src/lib/speech-text.ts', {}, {});
 const { splitSpeechText } = speechText;
 const speechQueue = load('../src/lib/speech-queue.ts', {}, {});
+const bargeIn = load('../src/lib/barge-in.ts', {}, {});
+const audioCues = load('../src/lib/audio-cues.ts', {}, {});
 
 function orbHarness(state = 'ready', reduced = false) {
   const effects = [], frames = new Map(), observers = [], arcs = [];
@@ -88,7 +91,7 @@ test('hidden pages pause animation; unmount releases observers and frames', () =
 
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 const flush = () => new Promise((resolve) => setImmediate(resolve));
-function voiceHarness() {
+function voiceHarness(settings = {}, clock = { setTimeout, clearTimeout }) {
   const states = [], audios = [], recognitions = [], requests = [];
   const response = deferred(), playback = deferred();
   class Audio {
@@ -105,12 +108,12 @@ function voiceHarness() {
     useState(value) { const index = states.length; states.push(typeof value === 'function' ? value() : value); return [states[index], (next) => { states[index] = next; }]; },
     useRef: (value) => ({ current: value }), useEffect() {}, useCallback: (fn) => fn,
   };
-  const hook = load('../src/hooks/useVoice.ts', { react: React, '@/lib/settings': { settingsForRequest: (s) => s }, '@/lib/speech-text': speechText, '@/lib/speech-queue': speechQueue }, {
-    window: { SpeechRecognition: Recognition, speechSynthesis: { cancel() {} }, setTimeout, clearTimeout }, Audio, AbortController,
+  const hook = load('../src/hooks/useVoice.ts', { react: React, '@/lib/settings': { settingsForRequest: (s) => s }, '@/lib/speech-text': speechText, '@/lib/speech-queue': speechQueue, '@/lib/barge-in': bargeIn, '@/lib/audio-cues': audioCues }, {
+    window: { SpeechRecognition: Recognition, speechSynthesis: { cancel() {} }, ...clock }, Audio, AbortController, AbortSignal,
     URL: { createObjectURL: () => 'blob:unit-fixture', revokeObjectURL() {} },
     fetch: (_url, options) => { requests.push(options); return response.promise; },
   }).useVoice;
-  const voice = hook({ settings: { jarvisSpeechEngine: 'main', provider: 'cloud', cloudProvider: 'custom' } });
+  const voice = hook({ settings: { jarvisSpeechEngine: 'main', provider: 'cloud', cloudProvider: 'custom', ...settings } });
   return { voice, states, audios, recognitions, requests, response, playback };
 }
 test('voice remains preparing until actual audio playback starts', async () => {
@@ -154,6 +157,68 @@ test('duplicate start requests do not replace or orphan the active microphone', 
   assert.equal(second, 0);
 });
 
+test('failed microphone session frees the next attempt (no permanently dead mic)', () => {
+  const h = voiceHarness(); let delivered = 0;
+  h.voice.startListening(() => delivered++);
+  // Chrome bazı hata yollarında onend göndermez; referans temizlenmezse
+  // mikrofon düğmesi bir daha asla çalışmaz.
+  h.recognitions[0].onerror({ error: 'not-allowed' });
+  h.voice.startListening(() => delivered++);
+  assert.equal(h.recognitions.length, 2, 'hata sonrası yeni oturum başlatılabilmeli');
+  h.recognitions[1].onresult({ resultIndex: 0, results: [{ isFinal: true, 0: { transcript: 'yeni sonuç' } }] });
+  assert.equal(delivered, 1);
+});
+
+test('cancelling a pending session lets the user start again', () => {
+  const h = voiceHarness();
+  h.voice.startListening(() => {});
+  h.voice.stopListening();
+  h.voice.startListening(() => {});
+  assert.equal(h.recognitions.length, 2, 'iptalden sonra yeniden başlatılabilmeli');
+  h.voice.stopListening();
+});
+
+function turnClock() {
+  let now = 0, id = 0; const pending = new Map();
+  return { setTimeout(fn, ms) { pending.set(++id, { at: now + ms, fn }); return id; },
+    clearTimeout(key) { pending.delete(key); },
+    advance(ms) { now += ms; for (const [key, timer] of [...pending]) if (timer.at <= now && pending.has(key)) { pending.delete(key); timer.fn(); } },
+  };
+}
+const transcript = (text, isFinal = true) => ({ resultIndex: 0, results: [{ isFinal, 0: { transcript: text } }] });
+test('Jarvis final segment does not cut the turn short; later words extend silence', () => {
+  const clock = turnClock(), received = [];
+  const h = voiceHarness({ jarvisMode: true, jarvisSilenceMs: 2500 }, clock);
+  h.voice.startListening(text => received.push(text)); const rec = h.recognitions[0];
+  assert.equal(rec.continuous, true);
+  rec.onresult(transcript('İlk cümle.')); clock.advance(1500);
+  assert.deepEqual(received, []); assert.equal(h.states[0], true);
+  rec.onresult(transcript('İlk cümle. İkinci cümle.', false)); clock.advance(2000);
+  assert.deepEqual(received, []); clock.advance(500);
+  assert.deepEqual(received, ['İlk cümle. İkinci cümle.']); assert.equal(h.states[0], false);
+});
+test('manual finish submits once without waiting for silence, cancel never submits', () => {
+  const clock = turnClock(), received = [];
+  const h = voiceHarness({ jarvisMode: true, jarvisAutoSend: false }, clock);
+  h.voice.startListening(text => received.push(text));
+  h.recognitions[0].onresult(transcript('Uzun talimat')); clock.advance(8000);
+  assert.deepEqual(received, []);
+  h.voice.finishListening(); h.voice.finishListening(); clock.advance(8000);
+  assert.deepEqual(received, ['Uzun talimat']);
+  h.voice.startListening(text => received.push(text)); h.recognitions[1].onresult(transcript('İptal'));
+  h.voice.stopListening(); h.voice.finishListening(); clock.advance(8000);
+  assert.deepEqual(received, ['Uzun talimat']);
+});
+test('recognizer restart retains earlier segments without double submission', () => {
+  const clock = turnClock(), received = [];
+  const h = voiceHarness({ jarvisMode: true, jarvisAutoSend: false }, clock);
+  h.voice.startListening(text => received.push(text)); const rec = h.recognitions[0];
+  rec.onresult(transcript('Birinci bölüm')); rec.onend();
+  rec.onresult(transcript('İkinci bölüm')); h.voice.finishListening();
+  rec.onresult(transcript('geç sonuç'));
+  assert.deepEqual(received, ['Birinci bölüm İkinci bölüm']);
+});
+
 test('native dictation submits the final transcript exactly once', () => {
   const states = [], effects = [], handlers = new Map(), messages = [];
   const window = {
@@ -171,12 +236,17 @@ test('native dictation submits the final transcript exactly once', () => {
   const voice = load('../src/hooks/useVoice.ts', {
     react: React,
     '@/lib/settings': { settingsForRequest: (settings) => settings },
-    '@/lib/speech-text': speechText, '@/lib/speech-queue': speechQueue,
-  }, { window, AbortController, URL: { revokeObjectURL() {} } }).useVoice();
+    '@/lib/speech-text': speechText, '@/lib/speech-queue': speechQueue, '@/lib/barge-in': bargeIn, '@/lib/audio-cues': audioCues,
+  }, { window, AbortController, AbortSignal, URL: { revokeObjectURL() {} } }).useVoice({
+    settings: { jarvisMode: true, jarvisFastMode: true, jarvisSilenceMs: 3000 },
+  });
   const cleanups = effects.map((effect) => effect());
   let received = [];
   voice.startListening((text) => received.push(text));
-  assert.equal(messages.find((message) => message.action === 'startDictation')?.action, 'startDictation');
+  const startMessage = messages.find((message) => message.action === 'startDictation');
+  assert.equal(startMessage?.action, 'startDictation');
+  assert.equal(startMessage?.command, 'fast');
+  assert.equal(startMessage?.silenceMs, 3000);
   handlers.get('chloeNativeSpeechResult')({ detail: { started: true } });
   handlers.get('chloeNativeSpeechResult')({ detail: { text: 'Merhaba JARVIS', final: false } });
   assert.deepEqual(received, []);
@@ -241,8 +311,8 @@ test('native speech stays in preparing state until macOS reports actual playback
   const voice = load('../src/hooks/useVoice.ts', {
     react: React,
     '@/lib/settings': { settingsForRequest: (settings) => settings },
-    '@/lib/speech-text': speechText, '@/lib/speech-queue': speechQueue,
-  }, { window, AbortController, URL: { revokeObjectURL() {} } }).useVoice({
+    '@/lib/speech-text': speechText, '@/lib/speech-queue': speechQueue, '@/lib/barge-in': bargeIn, '@/lib/audio-cues': audioCues,
+  }, { window, AbortController, AbortSignal, URL: { revokeObjectURL() {} } }).useVoice({
     settings: { jarvisSpeechEngine: 'device' },
   });
   const cleanups = effects.map((effect) => effect());
@@ -261,6 +331,39 @@ test('native speech stays in preparing state until macOS reports actual playback
   assert.equal(states[2], false);
   assert.equal(states[3], false);
   assert.equal(completed, 1);
+  cleanups.forEach((cleanup) => cleanup?.());
+});
+
+test('native speech failure ends the turn so hands-free listening can resume', () => {
+  const states = [], effects = [], handlers = new Map(), messages = [];
+  const window = {
+    webkit: { messageHandlers: { chloeMac: { postMessage: (message) => messages.push(message) } } },
+    addEventListener: (name, handler) => handlers.set(name, handler),
+    removeEventListener: (name) => handlers.delete(name),
+    setTimeout, clearTimeout,
+    speechSynthesis: { cancel() {} },
+  };
+  const React = {
+    useState(value) { const index = states.length; states.push(typeof value === 'function' ? value() : value); return [states[index], (next) => { states[index] = next; }]; },
+    useRef: (value) => ({ current: value }),
+    useEffect: (effect) => effects.push(effect),
+    useCallback: (fn) => fn,
+  };
+  const voice = load('../src/hooks/useVoice.ts', {
+    react: React,
+    '@/lib/settings': { settingsForRequest: (settings) => settings },
+    '@/lib/speech-text': speechText, '@/lib/speech-queue': speechQueue, '@/lib/barge-in': bargeIn, '@/lib/audio-cues': audioCues,
+  }, { window, AbortController, AbortSignal, URL: { revokeObjectURL() {} } }).useVoice({
+    settings: { jarvisSpeechEngine: 'device' },
+  });
+  const cleanups = effects.map((effect) => effect());
+  let completed = 0;
+  voice.speak('Merhaba.', { onEnd: () => completed++ });
+  const request = messages.find((message) => message.action === 'speakText');
+  handlers.get('chloeNativeVoice')({ detail: { id: request.speechId, error: 'voice unavailable' } });
+  assert.equal(completed, 1);
+  assert.equal(states[2], false);
+  assert.equal(states[3], false);
   cleanups.forEach((cleanup) => cleanup?.());
 });
 
@@ -284,8 +387,8 @@ test('device speech announces preparation, speaking, and completion in order', (
   const voice = load('../src/hooks/useVoice.ts', {
     react: React,
     '@/lib/settings': { settingsForRequest: (settings) => settings },
-    '@/lib/speech-text': speechText, '@/lib/speech-queue': speechQueue,
-  }, { window, SpeechSynthesisUtterance: Utterance, AbortController, URL: { revokeObjectURL() {} } }).useVoice({
+    '@/lib/speech-text': speechText, '@/lib/speech-queue': speechQueue, '@/lib/barge-in': bargeIn, '@/lib/audio-cues': audioCues,
+  }, { window, SpeechSynthesisUtterance: Utterance, AbortController, AbortSignal, URL: { revokeObjectURL() {} } }).useVoice({
     settings: { jarvisSpeechEngine: 'device' },
   });
 
@@ -300,4 +403,37 @@ test('device speech announces preparation, speaking, and completion in order', (
   assert.equal(states[2], false);
   assert.equal(states[3], false);
   assert.equal(completed, 1);
+});
+
+test('device speech failure ends the turn exactly once', () => {
+  const states = [], utterances = [];
+  const React = {
+    useState(value) { const index = states.length; states.push(typeof value === 'function' ? value() : value); return [states[index], (next) => { states[index] = next; }]; },
+    useRef: (value) => ({ current: value }),
+    useEffect() {},
+    useCallback: (fn) => fn,
+  };
+  class Utterance { constructor(text) { this.text = text; } }
+  const window = {
+    speechSynthesis: {
+      getVoices: () => [{ voiceURI: 'tr-female', name: 'Samantha', lang: 'tr-TR' }],
+      cancel() {},
+      speak: (utterance) => utterances.push(utterance),
+    },
+    setTimeout, clearTimeout,
+  };
+  const voice = load('../src/hooks/useVoice.ts', {
+    react: React,
+    '@/lib/settings': { settingsForRequest: (settings) => settings },
+    '@/lib/speech-text': speechText, '@/lib/speech-queue': speechQueue, '@/lib/barge-in': bargeIn, '@/lib/audio-cues': audioCues,
+  }, { window, SpeechSynthesisUtterance: Utterance, AbortController, AbortSignal, URL: { revokeObjectURL() {} } }).useVoice({
+    settings: { jarvisSpeechEngine: 'device' },
+  });
+  let completed = 0;
+  voice.speak('Merhaba.', { onEnd: () => completed++ });
+  utterances[0].onerror({ error: 'audio-busy' });
+  utterances[0].onend?.();
+  assert.equal(completed, 1);
+  assert.equal(states[2], false);
+  assert.equal(states[3], false);
 });

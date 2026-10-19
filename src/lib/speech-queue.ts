@@ -6,14 +6,32 @@ export function createSpeechQueue<T>(options: {
   preparing: () => void;
   ended: () => void;
   failed: (error: unknown) => void;
+  /** Configuration/auth/quota errors must end the whole turn, not retry clips. */
+  shouldRetry?: (error: unknown) => boolean;
+  /** Tek bir klip üretilemediğinde çağrılır; okuma kalan kliplerle sürer.
+   *  `moreRemaining` o anda okunmayı bekleyen başka klip olup olmadığını bildirir. */
+  skipped?: (error: unknown, moreRemaining: boolean) => void;
 }) {
   type Result = { value: T; error?: never } | { error: unknown; value?: never };
   const entries: { text: string; ready?: Promise<Result> }[] = [];
   let cursor = 0, busy = false, finished = false, settled = false, chars = 0;
   const prepare = (index: number) => {
     const entry = entries[index];
-    if (entry && !entry.ready) entry.ready = options.prepare(entry.text)
-      .then((value): Result => ({ value }), (error): Result => ({ error }));
+    if (!entry || entry.ready) return;
+    // `prepare` çağrısı SENKRON başlatılır (zamanlama korunur); yalnızca senkron
+    // fırlatma yakalanır, aksi hâlde `ready` tanımsız kalıp kuyruk ölür.
+    let pending: Promise<T>;
+    try {
+      pending = options.prepare(entry.text);
+    } catch (error) {
+      entry.ready = Promise.resolve({ error } as Result);
+      return;
+    }
+    entry.ready = pending.then((value): Result => ({ value }), (error): Result => ({ error }));
+  };
+  const dropEntry = (index: number) => {
+    entries[index].ready = undefined;
+    entries[index].text = '';
   };
   const pump = async () => {
     if (busy || settled || options.signal.aborted) return;
@@ -23,13 +41,28 @@ export function createSpeechQueue<T>(options: {
         options.preparing();
         prepare(cursor);
         prepare(cursor + 1);
-        const result = await entries[cursor].ready!;
+        let result = await entries[cursor].ready!;
         if (options.signal.aborted) return;
-        if ('error' in result) throw result.error;
+        if ('error' in result) {
+          if (options.shouldRetry?.(result.error) === false) throw result.error;
+          // Tek klip hatası tüm sesli yanıtı iptal etmemeli: AYNI metinle bir kez
+          // yeniden denenir, yine olmazsa yalnızca o klip atlanır ve okuma sürer.
+          // (Metin burada silinmez; silinirse yeniden deneme boş klip üretir.)
+          entries[cursor].ready = undefined;
+          prepare(cursor);
+          result = await entries[cursor].ready!;
+          if (options.signal.aborted) return;
+          if ('error' in result) {
+            if (options.shouldRetry?.(result.error) === false) throw result.error;
+            dropEntry(cursor);
+            cursor++;
+            options.skipped?.(result.error, cursor < entries.length);
+            continue;
+          }
+        }
         await options.play(result.value as T);
         // Release the Blob/promise of the played clip, not just its object URL.
-        entries[cursor].ready = undefined;
-        entries[cursor].text = '';
+        dropEntry(cursor);
         cursor++;
       }
       if (finished && !options.signal.aborted) { settled = true; options.ended(); }

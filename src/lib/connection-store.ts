@@ -3,12 +3,15 @@ import { chmodSync, closeSync, copyFileSync, existsSync, fsyncSync, mkdirSync, o
 import { homedir } from 'node:os';
 import path from 'node:path';
 import type { ConnectionSettings, SavedApiKey } from './settings';
+import { isolateJarvisConnections } from './settings.ts';
 
 type Vault = { version: 1; revision: number; connection: Partial<ConnectionSettings> };
 const fields = new Set(['provider', 'cloudProvider', 'cloudModel', 'apiKey', 'builtinConnections', 'apiBaseUrl',
   'customProviderName', 'customModel', 'customSupportsTools', 'customImageModel', 'customVideoModel',
   'customSpeechModel', 'customSpeechVoice', 'savedCustomProviders', 'selectedCustomProviderId',
-  'savedApiKeys', 'ollamaUrl', 'ollamaModel']);
+  'savedApiKeys', 'ollamaUrl', 'ollamaModel',
+  'jarvisProvider', 'jarvisApiKey', 'jarvisModel', 'jarvisApiBaseUrl',
+  'jarvisSpeechProvider', 'jarvisSpeechApiKey', 'jarvisSpeechModel', 'jarvisSpeechApiBaseUrl']);
 const providers = ['gemini', 'openai', 'anthropic', 'custom'];
 const record = (x: unknown): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x);
 const string = (x: unknown, max = 4096) => typeof x === 'string' && x.length <= max;
@@ -25,6 +28,12 @@ export function validateConnection(input: unknown): Partial<ConnectionSettings> 
     if (!fields.has(name)) continue;
     if (name === 'provider') { if (!['cloud', 'local'].includes(value as string)) throw new Error('Model kaynağı geçersiz.'); }
     else if (name === 'cloudProvider') { if (!providers.includes(value as string)) throw new Error('Sağlayıcı geçersiz.'); }
+    else if (name === 'jarvisProvider') {
+      if (!['inherit', 'gemini', 'openai', 'anthropic', 'custom', 'local'].includes(value as string)) throw new Error('Jarvis sağlayıcısı geçersiz.');
+    }
+    else if (name === 'jarvisSpeechProvider') {
+      if (!['inherit', 'gemini', 'custom'].includes(value as string)) throw new Error('Ses sağlayıcısı geçersiz.');
+    }
     else if (name === 'customSupportsTools') { if (typeof value !== 'boolean') throw new Error('Araç desteği geçersiz.'); }
     else if (name === 'builtinConnections') {
       if (!record(value) || Object.entries(value).some(([p, v]) => !providers.slice(0, 3).includes(p) || !record(v) || !string(v.apiKey) || !string(v.model, 200))) throw new Error('Kayıtlı sağlayıcı geçersiz.');
@@ -99,6 +108,12 @@ export function collectKeys(connection: Partial<ConnectionSettings>, existing: S
   for (const [provider, c] of Object.entries(connection.builtinConnections || {})) add(provider as SavedApiKey['provider'], c.apiKey);
   for (const p of connection.savedCustomProviders || []) add('custom', p.apiKey, p.baseUrl, `${p.name} · 1. anahtar`);
   if (connection.cloudProvider) add(connection.cloudProvider, connection.apiKey, connection.cloudProvider === 'custom' ? connection.apiBaseUrl : '');
+  if (connection.jarvisApiKey && connection.jarvisProvider && ['gemini', 'openai', 'anthropic', 'custom'].includes(connection.jarvisProvider)) {
+    add(connection.jarvisProvider as SavedApiKey['provider'], connection.jarvisApiKey, connection.jarvisProvider === 'custom' ? (connection.jarvisApiBaseUrl || connection.apiBaseUrl || '') : '', `Jarvis · ${connection.jarvisProvider}`);
+  }
+  if (connection.jarvisSpeechApiKey && connection.jarvisSpeechProvider && ['gemini', 'custom'].includes(connection.jarvisSpeechProvider)) {
+    add(connection.jarvisSpeechProvider as SavedApiKey['provider'], connection.jarvisSpeechApiKey, connection.jarvisSpeechProvider === 'custom' ? (connection.jarvisSpeechApiBaseUrl || '') : '', `Jarvis Ses · ${connection.jarvisSpeechProvider}`);
+  }
   return keys;
 }
 
@@ -123,7 +138,8 @@ export function writeConnections(patch: unknown, options: { migration?: boolean;
     const previous = readConnections();
     if (options.revision !== undefined && options.revision !== previous.revision) throw new Error('CONFLICT');
     const existing = previous.connection;
-    const next = options.migration && previous.revision > 0 ? { ...existing } : { ...existing, ...clean };
+    const next = options.migration && previous.revision > 0 ? { ...existing }
+      : isolateJarvisConnections(existing, { ...existing, ...clean });
     if (options.migration && previous.revision > 0) {
       next.savedCustomProviders = [...(existing.savedCustomProviders || []), ...(clean.savedCustomProviders || []).filter((p) =>
         !(existing.savedCustomProviders || []).some((old) => old.id === p.id || old.baseUrl === p.baseUrl))];

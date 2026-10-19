@@ -7,7 +7,7 @@ BUNDLE_ID="com.chloe.personal-assistant"
 MIN_SYSTEM_VERSION="15.0"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MACOS_DIR="$ROOT_DIR/macos"
-DIST_DIR="$ROOT_DIR/dist"
+DIST_DIR="$ROOT_DIR/.build.noindex"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
@@ -208,7 +208,7 @@ cp "$ROOT_DIR/licenses/agency-agents-LICENSE.txt" "$ROOT_DIR/licenses/openrig-LI
 /usr/bin/plutil -insert nodePath -string "$(command -v node)" "$RUNTIME_CONFIG"
 
 install_app() {
-  [[ -w /Applications ]] || { echo "Applications klasörüne yazılamıyor. dist/ChloeDesktop.app paketini Finder ile Applications'a taşı." >&2; return 1; }
+  [[ -w /Applications ]] || { echo "Applications klasörüne yazılamıyor. .build.noindex/ChloeDesktop.app paketini Finder ile Applications'a taşı." >&2; return 1; }
   if [[ -e "$INSTALL_BUNDLE" ]]; then
     local existing_id
     existing_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INSTALL_BUNDLE/Contents/Info.plist" 2>/dev/null || true)"
@@ -233,6 +233,15 @@ install_app() {
     return 1
   fi
   rmdir "$staging"
+  # Keep rollback history without advertising each backup as another app.
+  if [[ -d "$backup" ]]; then
+    /usr/bin/ditto -c -k --keepParent "$backup" "$backup.zip"
+    if /usr/bin/unzip -tq "$backup.zip" >/dev/null; then
+      swift "$ROOT_DIR/script/trash-chloe-bundles.swift" "$backup"
+    else
+      echo "Yedek arşivi doğrulanamadı; eski uygulama korunuyor: $backup" >&2
+    fi
+  fi
   echo "Uygulama kuruldu: $INSTALL_BUNDLE (yerel kurulum; kaynak proje klasörünü koru)"
 }
 

@@ -46,15 +46,28 @@ test('custom profile restored after leaving built-in provider without mixing key
   assert.equal(back.apiKey, 'rotated-key'); assert.equal(back.customModel, 'new-model');
 });
 test('request payload contains only the active credential', () => {
-  const payload = settingsForRequest({ ...chosen, builtinConnections: { gemini: { apiKey: 'hidden-key', model: 'g' } }, jarvisSpeechApiKey: 'legacy-voice-key' });
+  const payload = settingsForRequest({ ...chosen, builtinConnections: { gemini: { apiKey: 'hidden-key', model: 'g' } }, jarvisSpeechApiKey: 'speech-key' });
   assert.equal(payload.apiKey, 'new-key'); assert.equal(payload.selectedCustomProviderId, '');
   assert.deepEqual(payload.savedCustomProviders, []); assert.deepEqual(payload.builtinConnections, {});
-  assert.equal(payload.jarvisSpeechApiKey, '');
+  // Ses için AYRI anahtar /api/voice tarafından kullanıldığı için payload'da kalır;
+  // diğer kayıtlı anahtarlar (kasa profilleri) istemciye gönderilmez.
+  assert.equal(payload.jarvisSpeechApiKey, 'speech-key');
+  assert.deepEqual(payload.savedApiKeys, []);
   assert.equal(settingsForRequest({ ...chosen, provider: 'local' }).apiKey, '');
 });
 test('local choice survives reload even when matching old default', () => {
   globalThis.window = { localStorage: { getItem: () => JSON.stringify({ ...DEFAULT_SETTINGS, provider: 'local' }) } };
   try { assert.equal(loadSettings().provider, 'local'); } finally { delete globalThis.window; }
+});
+test('Jarvis silence tolerance restores only supported values and defaults invalid values', () => {
+  for (const milliseconds of [1500, 2000, 2500, 3000, 3500]) {
+    globalThis.window = { localStorage: { getItem: () => JSON.stringify({ jarvisSilenceMs: milliseconds }) } };
+    try { assert.equal(loadSettings().jarvisSilenceMs, milliseconds); } finally { delete globalThis.window; }
+  }
+  for (const jarvisSilenceMs of [0, 9000, '2500', null]) {
+    globalThis.window = { localStorage: { getItem: () => JSON.stringify({ jarvisSilenceMs }) } };
+    try { assert.equal(loadSettings().jarvisSilenceMs, DEFAULT_SETTINGS.jarvisSilenceMs); } finally { delete globalThis.window; }
+  }
 });
 test('legacy Gemini speech migrates to main API without losing identity or credentials', () => {
   globalThis.window = { localStorage: { getItem: () => JSON.stringify({ ...chosen, jarvisSpeechEngine: 'gemini', assistantName: 'Nova', userName: 'Berkay' }) } };

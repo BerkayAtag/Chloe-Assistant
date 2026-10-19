@@ -29,12 +29,12 @@ import {
 } from 'lucide-react';
 import { useVoice } from '@/hooks/useVoice';
 import { useSettings, retrySettings } from '@/hooks/useSettings';
-import { modelLabel, settingsForRequest, updateProviderSettings, type Settings } from '@/lib/settings';
+import { hasExplicitConnection, modelLabel, settingsForRequest, updateProviderSettings, type Settings } from '@/lib/settings';
 import { sendNativeAction } from '@/lib/native-bridge';
 import { JarvisEventDecoder, type JarvisEvent } from '@/lib/jarvis-protocol';
 import { useJarvisWork } from '@/hooks/useJarvisWork';
 import JarvisWorkPanel from '@/components/JarvisWorkPanel';
-import { jarvisModelSettings } from '@/lib/jarvis-model';
+import { jarvisEffectiveSettings } from '@/lib/jarvis-model';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -95,7 +95,7 @@ export default function Home() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [officeOpen, setOfficeOpen] = useState(false);
   const [officeContext, setOfficeContext] = useState({ runId: '', workspace: '' });
-  const [jarvisTiming, setJarvisTiming] = useState<{ firstTokenMs?: number; totalMs?: number; audioStartMs?: number; servedModel?: string }>({});
+  const [jarvisTiming, setJarvisTiming] = useState<{ firstTokenMs?: number; totalMs?: number; audioStartMs?: number; servedModel?: string; connection?: string }>({});
 
   const [input, setInput] = useState('');
   const [listeningText, setListeningText] = useState('');
@@ -112,6 +112,9 @@ export default function Home() {
   });
 
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
+  const micStartAtRef = useRef(0);
+  // Barge-in (sesle kesme) davranışı: sendMessage'a döngüsel bağlanmamak için ref.
+  const bargeInRef = useRef<() => void>(() => {});
   const requestControllerRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -226,7 +229,7 @@ export default function Home() {
   }, [attachments, generator, isGenerating, settings]);
 
   const sendMessage = useCallback(
-    async (text: string, forceJarvisMode = false) => {
+    async (text: string, forceJarvisMode = false, voiceTurn = false) => {
       const clean = text.trim();
       if ((!clean && attachments.length === 0) || isLoading || isGenerating || requestControllerRef.current) return;
       const jarvisRequest = settings.jarvisMode || forceJarvisMode;
@@ -358,6 +361,9 @@ export default function Home() {
             settings: settingsForRequest(settings, forceJarvisMode ? { jarvisMode: true } : {}),
             conversationId: convId,
             ...(jarvisRequest ? { streamProtocol: 'jarvis-v1' } : {}),
+            // Sesli tur: Jarvis'e özel API bağlantısı yalnızca bu turlarda kullanılır.
+            // Yazılı sohbet ve internet işleri ana bağlantıda (varsayılan API) kalır.
+            ...(voiceTurn ? { voiceTurn: true } : {}),
           }),
           signal: AbortSignal.any([controller.signal, AbortSignal.timeout(needsDetailedResearch(clean) ? 300_000 : 60_000)]),
         });
@@ -382,6 +388,7 @@ export default function Home() {
           speechStream = voice.beginSpeechStream({
             onStart: () => setJarvisTiming((previous) => ({ ...previous, audioStartMs: Math.round(performance.now() - turnStarted) })),
             onEnd: () => setResumeJarvisListening(true),
+            onBargeIn: () => bargeInRef.current(),
           });
         }
         const append = (text: string) => {
@@ -392,6 +399,7 @@ export default function Home() {
         const receive = (event: JarvisEvent) => {
           if (event.type === 'text') append(event.text);
           if (event.type === 'error') throw new Error(event.message);
+          if (event.type === 'meta') setJarvisTiming((previous) => ({ ...previous, connection: event.connection }));
           if (event.type === 'routing') setJarvisTiming((previous) => ({ ...previous, servedModel: event.servedModel }));
           if (event.type === 'timing') setJarvisTiming((previous) => ({ ...previous, firstTokenMs: event.firstTokenMs ?? undefined, totalMs: event.totalMs }));
           if (event.type === 'done') streamFinished = true;
@@ -424,6 +432,7 @@ export default function Home() {
           setMessages(newMessages);
           setErrorDetail(detail || 'Model yanıtı üretilemedi.');
           voice.stopSpeaking();
+          if (jarvisHandsFree) setResumeJarvisListening(true);
           return;
         }
 
@@ -437,6 +446,7 @@ export default function Home() {
               rate: tone === 'warm' ? 0.92 : tone === 'calm' ? 0.88 : 0.96,
               pitch: tone === 'warm' ? 1.03 : tone === 'calm' ? 0.98 : 1,
               onEnd: () => setResumeJarvisListening(true),
+              onBargeIn: () => bargeInRef.current(),
             });
           } else {
             voice.speak(assistantMsg);
@@ -455,6 +465,7 @@ export default function Home() {
         if (err instanceof Error && err.name === 'TimeoutError') {
           setErrorDetail('Model zaman aşımına uğradı. Ayarlar bölümünden bağlantıyı test et; detaylı araştırma dışındaki isteklerde bekleme süresi 60 saniyedir.');
           setMessages((previous) => previous.filter((message, index) => !(index === previous.length - 1 && message.role === 'assistant' && !message.content)));
+          if (jarvisRequest && jarvisHandsFree) setResumeJarvisListening(true);
           return;
         }
         if (err instanceof DOMException && err.name === 'AbortError') {
@@ -465,6 +476,7 @@ export default function Home() {
         }
         const msg = err instanceof Error ? err.message : 'Bilinmeyen hata';
         setErrorDetail(msg);
+        if (jarvisRequest && jarvisHandsFree) setResumeJarvisListening(true);
       } finally {
         if (requestControllerRef.current === controller) {
           requestControllerRef.current = null;
@@ -565,7 +577,23 @@ export default function Home() {
   );
 
   const toggleListening = () => {
-    if (voice.isStarting) return;
+    // Başlatma takıldıysa düğme iptal işlevi görür; ancak ilk 1,2 sn içindeki
+    // ikinci dokunuş kazara sayılır — aksi hâlde mikrofon "aniden kesiliyor" gibi
+    // görünür (kullanıcı düğmeye iki kez basar, ikincisi oturumu kapatır).
+    if (voice.isStarting) {
+      if (performance.now() - micStartAtRef.current < 1200) return;
+      voice.stopListening();
+      setListeningText('');
+      return;
+    }
+    micStartAtRef.current = performance.now();
+    // Ön kontrol: geçerli bir model bağlantısı yoksa mikrofonu hiç açma —
+    // kullanıcı konuşup sonunda hata görmesin.
+    const voiceSettings = settings.jarvisMode ? jarvisEffectiveSettings(settings) : settings;
+    if (!hasExplicitConnection(settingsForRequest(voiceSettings))) {
+      setErrorDetail('Önce Ayarlar bölümünden bir model bağlantısı seç.');
+      return;
+    }
     if (isLoading) requestControllerRef.current?.abort();
     voice.stopSpeaking();
     if (voice.isListening) {
@@ -574,13 +602,17 @@ export default function Home() {
     } else {
       voice.startListening((finalText) => {
         setInput(finalText);
-        sendMessage(finalText, settings.jarvisMode);
+        sendMessage(finalText, settings.jarvisMode, true);
       });
     }
   };
 
   const toggleHandsFree = () => {
     const enabled = !jarvisHandsFree;
+    if (enabled && !hasExplicitConnection(settingsForRequest(jarvisEffectiveSettings(settings)))) {
+      setErrorDetail('Önce Jarvis Ayarları bölümünden çalışan bir model bağlantısı seç.');
+      return;
+    }
     setJarvisHandsFree(enabled);
     setResumeJarvisListening(false);
     if (!enabled) {
@@ -591,7 +623,7 @@ export default function Home() {
     if (!isLoading && !voice.isListening && !voice.isStarting && !voice.isSpeaking && !voice.isPreparingSpeech) {
       voice.startListening((finalText) => {
         setInput(finalText);
-        sendMessage(finalText, true);
+        sendMessage(finalText, true, true);
       });
     }
   };
@@ -622,20 +654,39 @@ export default function Home() {
     }
   };
 
+  // Barge-in: kullanıcı asistan konuşurken söze girerse sesi kes ve dinlemeye geç.
+  useEffect(() => {
+    bargeInRef.current = () => {
+      voice.stopSpeaking();
+      setResumeJarvisListening(false);
+      startListening((finalText) => {
+        setInput(finalText);
+        sendMessage(finalText, true, true);
+      });
+    };
+  }, [sendMessage, startListening, voice]);
+
   useEffect(() => {
     if (officeOpen || !settings.jarvisMode || !jarvisHandsFree || !resumeJarvisListening || isLoading) return;
     if (voice.isSpeaking || voice.isPreparingSpeech || voice.isListening || voice.isStarting) return;
-    if (voiceError || !sttSupported) {
+    // Yalnızca MİKROFON kaynaklı hatalar döngüyü durdurur. Ses üretimi (TTS)
+    // hatası mikrofonu engellememeli; aksi hâlde tek bir 502/422 hatası
+    // hands-free döngüsünü kalıcı olarak kapatır.
+    const microphoneBlocked = !sttSupported ||
+      Boolean(voiceError && /mikrofon|konuşma tanıma|ses tanıma|dikte|dictation|microphone/iu.test(voiceError));
+    if (microphoneBlocked) {
       const timer = window.setTimeout(() => setResumeJarvisListening(false), 0);
       return () => window.clearTimeout(timer);
     }
     const timer = window.setTimeout(() => {
       setResumeJarvisListening(false);
+      // Bayat TTS hatası ekranda kalırsa kullanıcıya yanlış izlenim verir.
+      if (voiceError) voice.clearError();
       startListening((finalText) => {
         setInput(finalText);
-        sendMessage(finalText, true);
+        sendMessage(finalText, true, true);
       });
-    }, 450);
+    }, 200);
     return () => window.clearTimeout(timer);
   }, [
     isLoading,
@@ -648,6 +699,8 @@ export default function Home() {
     sttSupported,
     voiceError,
     voice.isSpeaking, voice.isPreparingSpeech, voice.isListening, voice.isStarting,
+    voice.clearError,
+    voice,
   ]);
 
   const cancelResponse = () => {
@@ -736,7 +789,7 @@ export default function Home() {
         <JarvisConsole
           settings={settings}
           assistantName={settings.assistantName || 'Chloe'}
-          modelName={modelLabel(jarvisModelSettings(settings))}
+          modelName={`Sesli hızlı tur: ${modelLabel(jarvisEffectiveSettings(settings))}`}
           isListening={voice.isListening}
           isStarting={voice.isStarting}
           isSpeaking={voice.isSpeaking}
@@ -749,6 +802,7 @@ export default function Home() {
           error={voice.error || errorDetail}
           onExit={toggleJarvisMode}
           onToggleMic={toggleListening}
+          onFinishListening={voice.finishListening}
           onCancel={cancelResponse}
           onSettingsChange={(patch) => setSettings((previous) => updateProviderSettings(previous, patch))}
           onOpenOffice={() => { cancelResponse(); setOfficeOpen(true); }}
@@ -822,7 +876,14 @@ export default function Home() {
               {settings.jarvisMode && <span className="hidden sm:inline">Açık</span>}
             </button>
             <button
-              onClick={() => setSpeakEnabled((v) => !v)}
+              onClick={() => {
+                setSpeakEnabled((v) => {
+                  // Ses kapatıldığında çalan yanıt da hemen susar; aksi hâlde
+                  // "sesi kapat" diyen kullanıcı sesi duymaya devam eder.
+                  if (v) voice.stopSpeaking();
+                  return !v;
+                });
+              }}
               className="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-night-800 transition-colors"
               title={speakEnabled ? 'Sesli yanıtı kapat' : 'Sesli yanıtı aç'}
               aria-label={speakEnabled ? 'Sesli yanıtı kapat' : 'Sesli yanıtı aç'}

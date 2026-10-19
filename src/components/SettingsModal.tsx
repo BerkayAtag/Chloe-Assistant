@@ -37,6 +37,25 @@ export default function SettingsModal({
   const [testingConnection, setTestingConnection] = useState(false);
   const [keyName, setKeyName] = useState('');
   const [cloudModels, setCloudModels] = useState<string[]>([]);
+  const [modelDetails, setModelDetails] = useState<{
+    id: string;
+    executionStatus: string | null;
+    available: boolean | null;
+    unavailableReason: string | null;
+    contextWindow: number | null;
+    supportsTools: boolean | null;
+  }[]>([]);
+  const [health, setHealth] = useState<{
+    supported: boolean;
+    reason?: string;
+    live?: { ok: boolean; status: number; uptimeSeconds: number | null } | null;
+    ready?: { ok: boolean; status: number; readyUpstreams: number | null } | null;
+    providers?: { platform: string; name: string; status: string; keys: number; resumeAt: string | null; requestsRemainingPct: number | null; lastError: string | null }[];
+    counts?: Record<string, number>;
+    quota?: { lowBalance: boolean; pools: number; secondsUntilReset: number | null } | null;
+    keyRejected?: boolean;
+  } | null>(null);
+  const [loadingHealth, setLoadingHealth] = useState(false);
   const testController = useRef<AbortController | null>(null);
   useEffect(() => () => testController.current?.abort(), []);
 
@@ -49,6 +68,8 @@ export default function SettingsModal({
     setModelListError(null);
     setConnectionStatus(null);
     setCloudModels([]);
+    setModelDetails([]);
+    setHealth(null);
     onChange(updateProviderSettings(settings, patch));
   };
 
@@ -89,9 +110,25 @@ export default function SettingsModal({
         body: JSON.stringify({ settings: settingsForRequest(settings) }), signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });
       const data = await response.json(); if (controller.signal.aborted) return;
       if (!response.ok) throw new Error(data.error || 'Model listesi alınamadı.');
-      setCloudModels(data.models); setConnectionStatus({ kind: 'success', message: `${data.models.length} model bulundu. Model alanından seçebilirsin.` });
+      setCloudModels(data.models);
+      setModelDetails(Array.isArray(data.details) ? data.details : []);
+      const exhausted = Array.isArray(data.details) ? data.details.filter((row: { executionStatus?: string | null }) => row.executionStatus === 'exhausted').length : 0;
+      setConnectionStatus({ kind: 'success', message: `${data.models.length} model bulundu${exhausted ? ` · ${exhausted} modelde kota dolu` : ''}. Model alanından seçebilirsin.` });
     } catch (error) { if (!controller.signal.aborted) setModelListError(error instanceof Error ? error.message : 'Model listesi alınamadı.'); }
     finally { if (testController.current === controller) setLoadingModels(false); }
+  };
+
+  const checkProviderHealth = async () => {
+    testController.current?.abort(); const controller = new AbortController(); testController.current = controller;
+    setLoadingHealth(true); setHealth(null); setModelListError(null);
+    try {
+      const response = await fetch('/api/providers/health', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: settingsForRequest(settings) }), signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]) });
+      const data = await response.json(); if (controller.signal.aborted) return;
+      if (!response.ok) throw new Error(data.error || 'Sağlık durumu alınamadı.');
+      setHealth(data);
+    } catch (error) { if (!controller.signal.aborted) setModelListError(error instanceof Error ? error.message : 'Sağlık durumu alınamadı.'); }
+    finally { if (testController.current === controller) setLoadingHealth(false); }
   };
 
   const fetchLocalModels = async () => {
@@ -518,12 +555,70 @@ export default function SettingsModal({
                   maxLength={200}
                 />
                 <datalist id="cloud-model-options">
-                  {[...new Set([...cloudSuggestions, ...cloudModels])].map((m) => (
-                    <option key={m} value={m} />
-                  ))}
+                  {[...new Set([...cloudSuggestions, ...cloudModels])].map((m) => {
+                    const detail = modelDetails.find((row) => row.id === m);
+                    const hint = detail?.executionStatus === 'exhausted' ? 'kota dolu'
+                      : detail?.executionStatus === 'needsKey' ? 'anahtar yok'
+                        : detail?.contextWindow ? `${Math.round(detail.contextWindow / 1000)}k bağlam` : '';
+                    return <option key={m} value={m} label={hint ? `${m} · ${hint}` : undefined} />;
+                  })}
                 </datalist>
                 {['custom', 'gemini', 'openai'].includes(settings.cloudProvider) && <button type="button" onClick={() => void listCloudModels()} disabled={loadingModels}
                   className="mt-2 rounded-lg border border-app-border px-3 py-2 text-xs disabled:opacity-50">{loadingModels ? 'Modeller alınıyor…' : 'API’den modelleri getir'}</button>}
+                {settings.cloudProvider === 'custom' && <button type="button" onClick={() => void checkProviderHealth()} disabled={loadingHealth}
+                  className="mt-2 ml-2 rounded-lg border border-app-border px-3 py-2 text-xs disabled:opacity-50">{loadingHealth ? 'Kontrol ediliyor…' : 'Sağlayıcı sağlığı ve kota'}</button>}
+                {modelDetails.some((row) => row.executionStatus) && (
+                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    {modelDetails.filter((row) => row.executionStatus === 'ready').length} model hazır
+                    {modelDetails.filter((row) => row.executionStatus === 'exhausted').length > 0 && ` · ${modelDetails.filter((row) => row.executionStatus === 'exhausted').length} modelde kota dolu (UTC gece yarısı sıfırlanır)`}
+                    {modelDetails.filter((row) => row.executionStatus === 'needsKey').length > 0 && ` · ${modelDetails.filter((row) => row.executionStatus === 'needsKey').length} model için anahtar yok`}
+                  </p>
+                )}
+                {health && (
+                  <div className="mt-3 rounded-xl border border-app-border bg-app-surface p-3 text-xs">
+                    {!health.supported ? (
+                      <p className="text-gray-500 dark:text-gray-400">{health.reason || 'Bu uç nokta sağlık bilgisi sunmuyor.'}</p>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`rounded-full px-2 py-0.5 font-medium ${health.live?.ok ? 'bg-emerald-500/15 text-emerald-500' : 'bg-red-500/15 text-red-500'}`}>
+                            Sunucu: {health.live?.ok ? 'canlı' : 'yanıt yok'}
+                          </span>
+                          <span className={`rounded-full px-2 py-0.5 font-medium ${health.ready?.ok ? 'bg-emerald-500/15 text-emerald-500' : 'bg-amber-500/15 text-amber-500'}`}>
+                            Hazır: {health.ready?.ok ? `${health.ready.readyUpstreams ?? '?'} upstream` : 'hazır değil'}
+                          </span>
+                          {health.counts && Object.entries(health.counts).map(([key, value]) => (
+                            <span key={key} className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600 dark:bg-night-800 dark:text-gray-300">
+                              {key === 'healthy' ? 'sağlıklı' : key === 'rate_limited' ? 'limitli' : key === 'invalid' ? 'geçersiz' : 'bilinmiyor'}: {value}
+                            </span>
+                          ))}
+                        </div>
+                        {health.keyRejected && (
+                          <p className="text-red-500">API anahtarı sunucu tarafından reddedildi. Anahtarı kontrol et.</p>
+                        )}
+                        {health.quota?.lowBalance && (
+                          <p className="text-amber-500">
+                            Kota azaldı{health.quota.secondsUntilReset !== null ? ` · en yakın sıfırlanma ~${Math.ceil(health.quota.secondsUntilReset / 60)} dk` : ''}.
+                          </p>
+                        )}
+                        {health.providers && health.providers.length > 0 && (
+                          <div className="max-h-40 space-y-1 overflow-y-auto custom-scrollbar">
+                            {health.providers.map((row) => (
+                              <div key={`${row.platform}-${row.name}`} className="flex items-center justify-between gap-2">
+                                <span className="truncate text-gray-700 dark:text-gray-200">{row.name}</span>
+                                <span className="shrink-0 text-gray-500 dark:text-gray-400">
+                                  {row.status === 'healthy' ? 'sağlıklı' : row.status === 'rate_limited' ? 'limitli' : row.status === 'invalid' ? 'geçersiz' : 'bilinmiyor'}
+                                  {row.requestsRemainingPct !== null ? ` · %${Math.round(row.requestsRemainingPct)} kaldı` : ''}
+                                  {row.resumeAt ? ` · ${new Date(row.resumeAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {modelListError && <p role="alert" className="mt-2 text-xs text-app-danger">{modelListError}</p>}
                 {isFreeLLM && <div className="mt-3"><label htmlFor="free-routing" className={label}>FreeLLMAPI yönlendirmesi</label>
                   <select id="free-routing" className={field} value={['auto','auto:fast','auto:smart','auto:reliable','auto:balanced','fusion'].includes(settings.customModel) ? settings.customModel : ''}

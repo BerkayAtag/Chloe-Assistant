@@ -3,8 +3,17 @@ import { localRequestAllowed } from '@/lib/request-origin';
 import { modelErrorMessage, modelSecrets } from '@/lib/model-error';
 import { DEFAULT_SETTINGS, hasExplicitConnection, type Settings } from '@/lib/settings';
 import { mediaConnection, MediaConfigurationError, providerFailure, readLimitedBytes } from '@/lib/media-provider';
+import { jarvisSpeechSettings } from '@/lib/jarvis-model';
+import { geminiPcmStream } from '@/lib/gemini-pcm-stream';
 export const maxDuration = 90;
 const voices = ['Kore', 'Aoede', 'Leda', 'Sulafat', 'Zephyr', 'Achernar'];
+const failureStatus = (error: unknown) => {
+  if (error instanceof MediaConfigurationError) return 422;
+  const status = (error as { statusCode?: number } | null)?.statusCode;
+  // Preserve terminal provider errors so the player does not retry a depleted
+  // quota or invalid key for every sentence. Upstream server failures stay 502.
+  return status && status >= 400 && status < 500 ? status : 502;
+};
 export async function POST(request: Request) {
   let settings = DEFAULT_SETTINGS;
   try {
@@ -13,13 +22,30 @@ export async function POST(request: Request) {
     if (typeof body.text !== 'string' || !body.text.trim() || body.text.length > 12000) return NextResponse.json({ error: 'Ses metni 1–12.000 karakter olmalı.' }, { status: 400 });
     if (!hasExplicitConnection(body.settings)) return NextResponse.json({ error: 'Ses isteğinde etkin ana model ayarları gerekli. Uygulamayı yenile.' }, { status: 400 });
     settings = { ...DEFAULT_SETTINGS, ...body.settings } as Settings;
-    const connection = mediaConnection(settings, 'speech', process.env.GEMINI_API_KEY);
+    // Ses (TTS) bağlantısı öncelik sırası:
+    //   1) Jarvis konsolunda tanımlı SES İÇİN AYRI API (jarvisSpeechProvider)
+    //   2) Jarvis'e özel LLM bağlantısı (ses üretebiliyorsa)
+    //   3) Ana bağlantı (ses üretebiliyorsa)
+    // Hiçbiri ses üretemiyorsa net bir açıklama döner; Jarvis anahtarı asla
+    // başka bir sağlayıcıya gönderilmez.
+    const speech = jarvisSpeechSettings(settings);
+    let connection;
+    try {
+      connection = mediaConnection(speech.settings, 'speech', process.env.GEMINI_API_KEY);
+    } catch (error) {
+      if (speech.issue && error instanceof MediaConfigurationError) {
+        return NextResponse.json({ error: speech.issue }, { status: 422 });
+      }
+      throw error;
+    }
+    // Ses için ayrı bağlantı kullanılıyorsa ses kimliği de ondan gelir.
+    const speechVoice = speech.dedicated ? settings.jarvisSpeechModel || undefined : undefined;
     const { key } = connection;
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(75000)]);
     if (connection.adapter === 'compatible') {
       const response = await fetch(`${connection.baseUrl}/audio/speech`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, signal, redirect: 'error',
-        body: JSON.stringify({ model: connection.model, input: body.text, voice: settings.customSpeechVoice || 'nova', response_format: 'mp3' }),
+        body: JSON.stringify({ model: speechVoice || connection.model, input: body.text, voice: body.voice || settings.customSpeechVoice || 'nova', response_format: 'mp3' }),
       });
       if (!response.ok) throw await providerFailure(response, connection.name);
       const mime = response.headers.get('content-type')?.split(';')[0] || '';
@@ -27,18 +53,25 @@ export async function POST(request: Request) {
       return new Response(new Uint8Array(await readLimitedBytes(response, 25 * 1024 * 1024)), { headers: { 'Content-Type': mime, 'Cache-Control': 'no-store' } });
     }
     const style = body.tone === 'warm' ? 'warm, friendly and expressive, with gentle natural variation' : body.tone === 'calm' ? 'calm, reassuring and unhurried, with natural pauses' : 'conversational and humanlike, relaxed and clear, never robotic or overly theatrical';
+    const pcmStream = body.stream === 'pcm-v1';
     const response = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
       signal, redirect: 'error',
       body: JSON.stringify({ model: connection.model, store: false,
         input: [{ type: 'user_input', content: [{ type: 'text', text: body.text, annotations: [{ type: 'speech_metadata', style: `Speak Turkish fluently; ${style}. Read only the provided text.` }] }] }],
-        response_format: { type: 'audio' }, generation_config: { speech_config: [{ voice: voices.includes(body.voice) ? body.voice : 'Kore' }] },
+        response_format: { type: 'audio', ...(pcmStream ? { mime_type: 'audio/l16', sample_rate: 24000 } : {}) },
+        ...(pcmStream ? { stream: true } : {}),
+        generation_config: { speech_config: [{ voice: voices.includes(body.voice) ? body.voice : 'Kore' }] },
       }),
     });
-    const data = await response.json();
+    if (pcmStream) {
+      if (!response.ok) throw await providerFailure(response, 'Gemini doğal ses');
+      return new Response(geminiPcmStream(response), { headers: { 'Content-Type': 'audio/x-chloe-pcm; rate=24000', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
+    }
+    const data = JSON.parse(new TextDecoder().decode(await readLimitedBytes(response, 40 * 1024 * 1024)));
     if (!response.ok) {
       const failure = Object.assign(new Error(typeof data.error?.message === 'string' ? data.error.message : 'Ses servisi yanıt vermedi.'), { statusCode: response.status });
-      return NextResponse.json({ error: `Gemini doğal ses: ${modelErrorMessage(failure, [key])}` }, { status: 502 });
+      return NextResponse.json({ error: `Gemini doğal ses: ${modelErrorMessage(failure, [key])}` }, { status: failureStatus(failure) });
     }
     const blocks = (data.steps || []).flatMap((step: { content?: { type: string; data?: string; mime_type?: string }[] }) => step.content || []);
     const audio = [...blocks].reverse().find((block: { type: string; data?: string }) => block.type === 'audio' && block.data) || data.output_audio;
@@ -51,6 +84,6 @@ export async function POST(request: Request) {
     }
     return new Response(new Uint8Array(bytes), { headers: { 'Content-Type': /pcm|L16/i.test(mime) ? 'audio/wav' : mime, 'Cache-Control': 'no-store' } });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name) ? 'Ses üretimi durduruldu veya zaman aşımına uğradı.' : modelErrorMessage(error, modelSecrets(settings)) }, { status: error instanceof MediaConfigurationError ? 422 : 502 });
+    return NextResponse.json({ error: error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name) ? 'Ses üretimi durduruldu veya zaman aşımına uğradı.' : modelErrorMessage(error, modelSecrets(settings)) }, { status: failureStatus(error) });
   }
 }

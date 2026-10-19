@@ -1,9 +1,37 @@
 const SENTENCE_PUNCTUATION = /[.!?…;:。！？]/u;
 
+/**
+ * Metni sesli okumaya uygun hâle getirir: kod blokları, bağlantılar, tablo
+ * çizgileri, emoji ve biçimlendirme işaretleri temizlenir. Ses motorları bu
+ * öğeleri ya anlamsız okur ya da okumayı bozar.
+ */
 export function cleanSpeechText(text: string): string {
-  return text.replace(/```[\s\S]*?```/g, ' Kod örneğini ekranda görebilirsin. ')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/https?:\/\/\S+/g, '')
-    .replace(/[*#`_]/g, '').trim();
+  return text
+    // Kod blokları: yalnızca kısa bir bilgilendirme cümlesi kalsın.
+    .replace(/```[\s\S]*?```/g, ' Kod örneğini ekranda görebilirsin. ')
+    // Satır içi kod işaretleri ve HTML etiketleri
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/<[^>\n]{1,120}>/g, ' ')
+    // Markdown bağlantı/görsel sözdizimi → yalnız metin kalır
+    .replace(/!?\[([^\]]*)\]\([^)]+\)/g, '$1')
+    .replace(/https?:\/\/\S+/g, '')
+    // Tablo ayırıcı satırları (|---|---|) tamamen atılır, diğer borular boşluğa döner
+    .replace(/^\s*\|?[\s:|-]{6,}\|?\s*$/gm, ' ')
+    .replace(/\|/g, ' ')
+    // Yatay çizgiler ve alıntı işaretleri
+    .replace(/^\s*([-*_]\s*){3,}$/gm, ' ')
+    .replace(/^\s{0,3}>\s?/gm, '')
+    // Madde imleri ve numaralandırma ("- ", "* ", "1. ") okunmasın
+    .replace(/^\s{0,6}(?:[-*•]\s+|\d{1,3}[.)]\s+)/gm, '')
+    // Emoji ve semboller
+    .replace(/[\p{Extended_Pictographic}\u{FE0F}\u{20E3}]/gu, '')
+    // Biçimlendirme işaretleri
+    .replace(/[*#_~^]/g, '')
+    // Boşluk düzeni: satır sonları cümle aralığına dönüşür
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\s*\n+\s*/g, ' ')
+    .replace(/\s+([.!?,;:])/g, '$1')
+    .trim();
 }
 
 /** Keep incomplete words and fenced code until a safe speech boundary exists. */
@@ -18,7 +46,7 @@ export function createSpeechTextBuffer(emit: (text: string) => void) {
         const clause = /[,;:—](?=\s)/gu;
         for (const match of pending.matchAll(clause)) {
           const candidate = match.index! + match[0].length;
-          if (candidate >= 36 && candidate <= 140) { end = candidate; break; }
+          if (candidate >= 24 && candidate <= 140) { end = candidate; break; }
         }
       }
       for (const match of pending.matchAll(/[.!?…](?=\s)|\n/g)) {

@@ -26,6 +26,20 @@ export async function POST(request: Request) {
     const rows = google ? data.models : data.data;
     if (!Array.isArray(rows)) throw new Error('Sağlayıcının model listesi beklenen biçimde değil.');
     const models: string[] = [...new Set<string>(rows.map((row) => google ? row.name?.replace(/^models\//, '') : row.id).filter((id): id is string => typeof id === 'string' && id.length <= 200))].sort();
-    return NextResponse.json({ models }, { headers: { 'Cache-Control': 'no-store' } });
+    // FreeLLMAPI satırları ek durum bilgisi taşır: kota tükenmiş / anahtar yok / bağlam penceresi.
+    const details = rows.slice(0, 600).map((row) => {
+      const id = google ? row.name?.replace(/^models\//, '') : row.id;
+      if (typeof id !== 'string') return null;
+      return {
+        id,
+        executionStatus: typeof row.execution_status === 'string' ? row.execution_status : null,
+        available: typeof row.available === 'boolean' ? row.available : null,
+        unavailableReason: typeof row.unavailable_reason === 'string' ? row.unavailable_reason : null,
+        contextWindow: typeof row.context_window === 'number' ? row.context_window
+          : typeof row.context_length === 'number' ? row.context_length : null,
+        supportsTools: Array.isArray(row.supported_parameters) ? row.supported_parameters.includes('tools') : null,
+      };
+    }).filter((row): row is NonNullable<typeof row> => row !== null);
+    return NextResponse.json({ models, details }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) { return NextResponse.json({ error: modelErrorMessage(error, modelSecrets(settings)) }, { status: 502 }); }
 }

@@ -77,6 +77,32 @@ test('request serialization cannot include archived credentials', () => {
   const s = settingsForRequest({ ...DEFAULT_SETTINGS, apiKey: 'active', savedApiKeys: [{ id: 'g', name: '1', provider: 'gemini', apiKey: 'archived', baseUrl: '', isDefault: true }] });
   assert.equal(s.apiKey, 'active'); assert.ok(!JSON.stringify(s).includes('archived'));
 });
+
+test('dedicated Jarvis keys and models never follow a changed provider or endpoint', () => {
+  const s = { ...DEFAULT_SETTINGS, jarvisProvider: 'gemini', jarvisApiKey: 'synthetic-jarvis', jarvisModel: 'gemini-test' };
+  const changed = updateProviderSettings(s, { jarvisProvider: 'custom', jarvisApiBaseUrl: 'https://b.example/v1' });
+  assert.equal(changed.jarvisApiKey, ''); assert.equal(changed.jarvisModel, '');
+  const custom = { ...s, jarvisProvider: 'custom', jarvisApiBaseUrl: 'https://a.example/v1' };
+  assert.equal(updateProviderSettings(custom, { jarvisApiBaseUrl: 'https://b.example/v1' }).jarvisApiKey, '');
+  assert.equal(updateProviderSettings(custom, { jarvisApiBaseUrl: 'https://a.example/v1/' }).jarvisApiKey, s.jarvisApiKey);
+  assert.equal(updateProviderSettings(custom, { jarvisApiBaseUrl: 'https://b.example/v1', jarvisApiKey: 'new-key' }).jarvisApiKey, 'new-key');
+  const inheritedBase = { ...custom, jarvisApiBaseUrl: '', apiBaseUrl: 'https://a.example/v1' };
+  assert.equal(updateProviderSettings(inheritedBase, { apiBaseUrl: 'https://b.example/v1' }).jarvisApiKey, '');
+  const speech = { ...s, jarvisSpeechProvider: 'custom', jarvisSpeechApiKey: 'synthetic-speech', jarvisSpeechApiBaseUrl: 'https://a.example/v1' };
+  assert.equal(updateProviderSettings(speech, { jarvisSpeechApiBaseUrl: 'https://b.example/v1' }).jarvisSpeechApiKey, '');
+  assert.equal(updateProviderSettings(speech, { jarvisSpeechProvider: 'gemini' }).jarvisSpeechApiKey, '');
+});
+test('vault rejects retained Jarvis keys at a new destination and archives the old scope', () => isolated(() => {
+  writeConnections({ ...base, jarvisProvider: 'custom', jarvisApiKey: 'jarvis-old', jarvisApiBaseUrl: 'https://a.example/v1',
+    jarvisSpeechProvider: 'gemini', jarvisSpeechApiKey: 'speech-old' });
+  const changed = writeConnections({ jarvisApiBaseUrl: 'https://b.example/v1', jarvisApiKey: 'jarvis-old',
+    jarvisSpeechProvider: 'custom', jarvisSpeechApiBaseUrl: 'https://b.example/v1', jarvisSpeechApiKey: 'speech-old' });
+  assert.equal(changed.connection.jarvisApiKey, ''); assert.equal(changed.connection.jarvisSpeechApiKey, '');
+  const keys = changed.connection.savedApiKeys;
+  assert.ok(keys.some(k => k.apiKey === 'jarvis-old' && k.baseUrl === 'https://a.example/v1'));
+  assert.ok(keys.some(k => k.apiKey === 'speech-old' && k.provider === 'gemini'));
+  assert.ok(!keys.some(k => k.baseUrl === 'https://b.example/v1'));
+}));
 test('acknowledged migration removes plaintext secrets from browser storage', () => {
   let stored; globalThis.window = { localStorage: { setItem: (_key, value) => { stored = value; } } };
   try { saveSettings({ ...DEFAULT_SETTINGS, apiKey: 'secret-active', builtinConnections: { gemini: { apiKey: 'secret-g', model: 'g' } }, savedCustomProviders: [free] }, true);

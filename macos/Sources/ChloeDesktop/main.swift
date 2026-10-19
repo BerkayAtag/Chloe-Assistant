@@ -5,9 +5,14 @@ import AVFoundation
 import Speech
 
 // Audio taps run on an audio queue, never on the AppKit main actor.
-nonisolated private func installSpeechTap(input: AVAudioInputNode, format: AVAudioFormat, request: SFSpeechAudioBufferRecognitionRequest) {
+nonisolated private func installSpeechTap(input: AVAudioInputNode, format: AVAudioFormat, request: SFSpeechAudioBufferRecognitionRequest, activity: @escaping @Sendable () -> Void) {
     input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
         request.append(buffer)
+        if let samples = buffer.floatChannelData?[0], buffer.frameLength > 0 {
+            var power: Float = 0
+            for index in 0..<Int(buffer.frameLength) { power += samples[index] * samples[index] }
+            if sqrt(power / Float(buffer.frameLength)) > 0.015 { activity() }
+        }
     }
 }
 
@@ -42,10 +47,15 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
     private var speechAuthorizationInProgress = false
     private var speechTapInstalled = false
     private var speechSilenceTimer: Timer?
-    private var speechSilenceInterval: TimeInterval = 1.4
+    private var speechSilenceInterval: TimeInterval = 2.4
     private var speechNoInputTimer: Timer?
     private var speechFinalizationTimer: Timer?
     private var speechLastTranscript = ""
+    private var speechCommittedTranscript = ""
+    private var speechSegment = 0
+    private var speechAutoSend = true
+    private var speechLastActivity: TimeInterval = 0
+    private var speechSessionTimer: Timer?
     private var webServerProcess: Process?
     private var serverProbeInProgress = false
     private var startupRetries = 0
@@ -198,7 +208,7 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
         handleNativeAction(action, url: nil, command: nil)
     }
 
-    fileprivate func handleNativeAction(_ action: String, url: String?, command: String?, speechId: String = "", rate: Double = 0.96, pitch: Double = 1) {
+    fileprivate func handleNativeAction(_ action: String, url: String?, command: String?, speechId: String = "", rate: Double = 0.96, pitch: Double = 1, silenceMs: Double? = nil, autoSend: Bool = true) {
         switch action {
         case "chooseWorkspace":
             let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false
@@ -214,7 +224,9 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
         case "openCodex":
             showCodexWindow()
         case "startDictation":
-            startDictation(fast: command == "fast")
+            startDictation(fast: command == "fast", silenceMs: silenceMs, autoSend: autoSend)
+        case "finishDictation":
+            finishDictationInput(generation: speechGeneration)
         case "stopDictation":
             stopDictation()
         case "getSpeechVoices":
@@ -282,10 +294,17 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
         }
     }
 
-    private func startDictation(fast: Bool = false) {
+    private func startDictation(fast: Bool = false, silenceMs: Double? = nil, autoSend: Bool = true) {
         guard primaryWebView != nil else { return }
         guard speechEngine == nil, speechTask == nil, !speechAuthorizationInProgress else { return }
-        speechSilenceInterval = fast ? 0.9 : 1.4
+        // Sessizlik eşiği turun bittiğini belirler. 0,9 sn gibi kısa bir değer
+        // cümle ortasındaki doğal duraklamada mikrofonu kapatıyordu; artık
+        // istemci açıkça gönderir, göndermezse güvenli varsayılan kullanılır.
+        if let silenceMs, silenceMs >= 600 {
+            speechSilenceInterval = min(max(silenceMs / 1000, 0.6), 8)
+        } else {
+            speechSilenceInterval = fast ? 1.9 : 2.4
+        }
         speechGeneration += 1
         let generation = speechGeneration
         speechAuthorizationInProgress = true
@@ -295,6 +314,8 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
             self.emitSpeechEvent(error: "macOS mikrofon/konuşma tanıma izni yanıt vermedi. Sistem Ayarları > Gizlilik ve Güvenlik içindeki Mikrofon ve Konuşma Tanıma izinlerini kontrol et; sonra yeniden dene.", stopped: true)
         }
         speechLastTranscript = ""
+        speechCommittedTranscript = ""
+        speechAutoSend = autoSend
         emitSpeechEvent(starting: true)
 
         let authorizationStatus = SFSpeechRecognizer.authorizationStatus()
@@ -349,7 +370,12 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
             failDictation("Mikrofonun ses biçimi alınamadı. Mikrofonu kontrol edip tekrar dene.")
             return
         }
-        installSpeechTap(input: input, format: format, request: request)
+        installSpeechTap(input: input, format: format, request: request) { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.speechGeneration == generation else { return }
+                self.speechLastActivity = ProcessInfo.processInfo.systemUptime
+            }
+        }
         speechTapInstalled = true
         engine.prepare()
         do {
@@ -365,17 +391,12 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
         speechEngine = engine
         speechRequest = request
         speechAuthorizationInProgress = false
-        speechTask = recognizer.recognitionTask(with: request) { @Sendable [weak self] result, error in
-            let text = result?.bestTranscription.formattedString
-            let isFinal = result?.isFinal == true
-            let errorMessage = error?.localizedDescription
-            DispatchQueue.main.async { [weak self] in
-                self?.handleSpeechRecognitionUpdate(
-                    text: text,
-                    isFinal: isFinal,
-                    errorMessage: errorMessage,
-                    generation: generation
-                )
+        beginSpeechTask(recognizer: recognizer, request: request, generation: generation)
+        speechSessionTimer?.invalidate()
+        speechSessionTimer = Timer.scheduledTimer(withTimeInterval: 120, repeats: false) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.speechGeneration == generation else { return }
+                self.failDictation("Mikrofon 2 dakikalık güvenlik sınırında durdu. Metin ekranda korundu; yeniden başlatabilirsin.")
             }
         }
         speechNoInputTimer?.invalidate()
@@ -390,6 +411,56 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
         emitSpeechEvent(started: true, onDevice: recognizer.supportsOnDeviceRecognition)
     }
 
+    private func beginSpeechTask(recognizer: SFSpeechRecognizer, request: SFSpeechAudioBufferRecognitionRequest, generation: Int) {
+        speechSegment += 1
+        let segment = speechSegment
+        speechTask = recognizer.recognitionTask(with: request) { @Sendable [weak self] result, error in
+            let text = result?.bestTranscription.formattedString
+            let isFinal = result?.isFinal == true
+            let errorMessage = error?.localizedDescription
+            DispatchQueue.main.async { [weak self] in
+                guard self?.speechSegment == segment else { return }
+                self?.handleSpeechRecognitionUpdate(
+                    text: text,
+                    isFinal: isFinal,
+                    errorMessage: errorMessage,
+                    generation: generation
+                )
+            }
+        }
+    }
+
+    private func continueSpeechSegment(generation: Int) {
+        guard speechGeneration == generation, let engine = speechEngine, let recognizer = speechRecognizer else { return }
+        speechSegment += 1 // Ignore the cancelled recognizer's late callbacks.
+        speechTask?.cancel()
+        speechRequest?.endAudio()
+        let request = SFSpeechAudioBufferRecognitionRequest()
+        request.shouldReportPartialResults = true
+        request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
+        let input = engine.inputNode
+        if speechTapInstalled { input.removeTap(onBus: 0) }
+        installSpeechTap(input: input, format: input.inputFormat(forBus: 0), request: request) { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.speechGeneration == generation else { return }
+                self.speechLastActivity = ProcessInfo.processInfo.systemUptime
+            }
+        }
+        speechTapInstalled = true
+        speechRequest = request
+        beginSpeechTask(recognizer: recognizer, request: request, generation: generation)
+    }
+
+    private func finishAfterSilence(generation: Int) {
+        guard speechGeneration == generation, speechAutoSend else { return }
+        let remaining = speechSilenceInterval - (ProcessInfo.processInfo.systemUptime - speechLastActivity)
+        if remaining > 0 {
+            speechSilenceTimer = Timer.scheduledTimer(withTimeInterval: remaining, repeats: false) { [weak self] _ in
+                Task { @MainActor [weak self] in self?.finishAfterSilence(generation: generation) }
+            }
+        } else { finishDictationInput(generation: generation) }
+    }
+
     private func handleSpeechRecognitionUpdate(
         text: String?,
         isFinal: Bool,
@@ -398,56 +469,40 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
     ) {
         guard speechGeneration == generation else { return }
         if let text, !text.isEmpty {
-            if text != speechLastTranscript {
-                speechLastTranscript = text
+            let combined = [speechCommittedTranscript, text].filter { !$0.isEmpty }.joined(separator: " ")
+            if combined != speechLastTranscript {
+                speechLastTranscript = combined
+                speechLastActivity = ProcessInfo.processInfo.systemUptime
                 speechNoInputTimer?.invalidate()
                 speechNoInputTimer = nil
                 speechSilenceTimer?.invalidate()
-                if !isFinal {
+                if speechAutoSend {
                     speechSilenceTimer = Timer.scheduledTimer(withTimeInterval: speechSilenceInterval, repeats: false) { [weak self] _ in
                         DispatchQueue.main.async { [weak self] in
-                            self?.finishDictationInput(generation: generation)
+                            self?.finishAfterSilence(generation: generation)
                         }
                     }
                 }
             }
-            emitSpeechEvent(text: text, isFinal: isFinal)
+            emitSpeechEvent(text: combined, isFinal: false)
+            if isFinal { speechCommittedTranscript = combined }
         }
         if let errorMessage {
             stopDictation(notifyWebView: false)
             emitSpeechEvent(error: "Ses tanıma başarısız: \(errorMessage)", stopped: true)
         } else if isFinal {
-            stopDictation()
+            continueSpeechSegment(generation: generation)
         }
     }
 
     private func finishDictationInput(generation: Int) {
         guard speechGeneration == generation,
-              !speechLastTranscript.isEmpty,
-              let request = speechRequest else { return }
-        speechSilenceTimer?.invalidate()
-        speechSilenceTimer = nil
-        speechNoInputTimer?.invalidate()
-        speechNoInputTimer = nil
-        if let engine = speechEngine {
-            engine.stop()
-            if speechTapInstalled {
-                engine.inputNode.removeTap(onBus: 0)
-                speechTapInstalled = false
-            }
-            speechEngine = nil
-        }
-        request.endAudio()
-        speechFinalizationTimer?.invalidate()
-        speechFinalizationTimer = Timer.scheduledTimer(withTimeInterval: 8, repeats: false) { [weak self] _ in
-            DispatchQueue.main.async { [weak self] in
-                guard let self,
-                      self.speechGeneration == generation,
-                      self.speechTask != nil else { return }
-                self.stopDictation(notifyWebView: false)
-                self.emitSpeechEvent(error: "Konuşma metne çevrilemedi. Tekrar deneyebilir veya yazabilirsin.", stopped: true)
-            }
-        }
+              !speechLastTranscript.isEmpty else { return }
+        let text = speechLastTranscript
+        // The latest stable partial is already displayed. Do not add an extra
+        // network finalization wait after the user explicitly finishes/silence.
+        stopDictation(notifyWebView: false)
+        emitSpeechEvent(text: text, isFinal: true)
     }
 
     private func failDictation(_ message: String) {
@@ -460,6 +515,8 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
 
     private func stopDictation(notifyWebView: Bool = true) {
         speechGeneration += 1
+        speechSessionTimer?.invalidate()
+        speechSessionTimer = nil
         speechAuthorizationInProgress = false
         speechSilenceTimer?.invalidate()
         speechSilenceTimer = nil
@@ -468,6 +525,7 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
         speechFinalizationTimer?.invalidate()
         speechFinalizationTimer = nil
         speechLastTranscript = ""
+        speechCommittedTranscript = ""
         if let engine = speechEngine {
             engine.stop()
             if speechTapInstalled {
@@ -913,8 +971,10 @@ private final class NativeBridgeHandler: NSObject, WKScriptMessageHandler {
         let speechId = payload["speechId"] as? String ?? ""
         let rate = payload["rate"] as? Double ?? 0.96
         let pitch = payload["pitch"] as? Double ?? 1
+        let silenceMs = payload["silenceMs"] as? Double
+        let autoSend = payload["autoSend"] as? Bool ?? true
         DispatchQueue.main.async { [weak self] in
-            self?.owner?.handleNativeAction(action, url: url, command: command, speechId: speechId, rate: rate, pitch: pitch)
+            self?.owner?.handleNativeAction(action, url: url, command: command, speechId: speechId, rate: rate, pitch: pitch, silenceMs: silenceMs, autoSend: autoSend)
         }
     }
 }

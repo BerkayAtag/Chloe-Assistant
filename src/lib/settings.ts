@@ -8,6 +8,7 @@ export type Provider = 'cloud' | 'local';
 export type CloudProvider = 'openai' | 'gemini' | 'anthropic' | 'custom';
 export type JarvisVoiceTone = 'natural' | 'warm' | 'calm';
 export type ThinkingMode = 'fast' | 'medium' | 'high';
+export type JarvisProvider = 'inherit' | 'gemini' | 'openai' | 'anthropic' | 'custom' | 'local';
 
 export interface SavedApiKey {
   id: string;
@@ -22,8 +23,13 @@ export interface SavedApiKey {
 export const CONNECTION_FIELDS = ['provider', 'cloudProvider', 'cloudModel', 'apiKey',
   'builtinConnections', 'apiBaseUrl', 'customProviderName', 'customModel', 'customSupportsTools',
   'customImageModel', 'customVideoModel', 'customSpeechModel', 'customSpeechVoice',
-  'savedCustomProviders', 'selectedCustomProviderId', 'savedApiKeys', 'ollamaUrl', 'ollamaModel'] as const;
+  'savedCustomProviders', 'selectedCustomProviderId', 'savedApiKeys', 'ollamaUrl', 'ollamaModel',
+  'jarvisProvider', 'jarvisApiKey', 'jarvisModel', 'jarvisApiBaseUrl',
+  'jarvisSpeechProvider', 'jarvisSpeechApiKey', 'jarvisSpeechModel', 'jarvisSpeechApiBaseUrl'] as const;
 export type ConnectionSettings = Pick<Settings, typeof CONNECTION_FIELDS[number]>;
+
+/** Ses (TTS) üretimi için ayrı bağlantı seçenekleri. */
+export type JarvisSpeechProvider = 'inherit' | 'gemini' | 'custom';
 
 export interface SavedCustomProvider {
   id: string;
@@ -60,11 +66,26 @@ export interface Settings {
   selectedCustomProviderId: string;
   jarvisMode: boolean;
   jarvisFastMode: boolean;
+  /** Konuşma sonu kabul edilmeden önce beklenecek sessizlik (ms). */
+  jarvisSilenceMs: number;
+  jarvisAutoSend: boolean;
+  jarvisProvider: JarvisProvider;
+  jarvisApiKey: string;
+  jarvisModel: string;
+  jarvisApiBaseUrl: string;
   jarvisVoiceURI: string;
   jarvisVoiceTone: JarvisVoiceTone;
   jarvisSpeechEngine: 'main' | 'device';
   jarvisCloudVoice: string;
+  /** Ses (TTS) üretimi için AYRI bağlantı. 'inherit' → Jarvis/ana bağlantı izlenir. */
+  jarvisSpeechProvider: JarvisSpeechProvider;
   jarvisSpeechApiKey: string;
+  jarvisSpeechModel: string;
+  jarvisSpeechApiBaseUrl: string;
+  /** Konuşurken sesle kesme (barge-in). Varsayılan kapalı: deneysel. */
+  jarvisBargeIn: boolean;
+  /** Mikrofon aç/kapa ses sinyali. Varsayılan açık. */
+  jarvisAudioCues: boolean;
   jarvisInstructions: string;
   thinkingMode: ThinkingMode;
 
@@ -105,11 +126,22 @@ export const DEFAULT_SETTINGS: Settings = {
   selectedCustomProviderId: '',
   jarvisMode: false,
   jarvisFastMode: true,
+  jarvisSilenceMs: 2500,
+  jarvisAutoSend: true,
+  jarvisProvider: 'inherit',
+  jarvisApiKey: '',
+  jarvisModel: '',
+  jarvisApiBaseUrl: '',
   jarvisVoiceURI: '',
   jarvisVoiceTone: 'natural',
   jarvisSpeechEngine: 'main',
   jarvisCloudVoice: 'Kore',
+  jarvisSpeechProvider: 'inherit',
   jarvisSpeechApiKey: '',
+  jarvisSpeechModel: '',
+  jarvisSpeechApiBaseUrl: '',
+  jarvisBargeIn: false,
+  jarvisAudioCues: true,
   jarvisInstructions: '',
   thinkingMode: 'medium',
   webSearch: true,
@@ -157,6 +189,24 @@ export function activeCustomProvider(settings: Settings): SavedCustomProvider | 
 }
 
 /** Provider switches are atomic: never send another provider's key/model. */
+export function isolateJarvisConnections<T extends Partial<ConnectionSettings>>(previous: Partial<ConnectionSettings>, incoming: T): T {
+  const next = { ...incoming };
+  const endpoint = (value = '') => value.trim().replace(/\/+$/, '');
+  for (const speech of [false, true]) {
+    const providerField = speech ? 'jarvisSpeechProvider' : 'jarvisProvider';
+    const keyField = speech ? 'jarvisSpeechApiKey' : 'jarvisApiKey';
+    const modelField = speech ? 'jarvisSpeechModel' : 'jarvisModel';
+    const baseField = speech ? 'jarvisSpeechApiBaseUrl' : 'jarvisApiBaseUrl';
+    const scope = (s: Partial<ConnectionSettings>) => `${s[providerField] || 'inherit'}:${s[providerField] === 'custom' ? endpoint(s[baseField] || (!speech ? s.apiBaseUrl : '')) : ''}`;
+    if (scope(previous) === scope(next)) continue;
+    // A full settings payload can still contain the OLD key after a selection
+    // changes. Do not treat its presence as consent to send it to a new host.
+    if (next[keyField] === previous[keyField]) next[keyField] = '';
+    if (next[modelField] === previous[modelField]) next[modelField] = '';
+  }
+  return next;
+}
+
 export function updateProviderSettings(settings: Settings, patch: Partial<Settings>): Settings {
   let next = { ...settings, ...patch };
   if (settings.cloudProvider === 'custom' && patch.apiBaseUrl !== undefined && patch.apiBaseUrl !== settings.apiBaseUrl && patch.apiKey === undefined) next.apiKey = '';
@@ -182,7 +232,7 @@ export function updateProviderSettings(settings: Settings, patch: Partial<Settin
     const active = activeCustomProvider(next);
     if (active) next.savedCustomProviders = next.savedCustomProviders.map((p) => p.id === active.id ? active : p);
   }
-  return next;
+  return isolateJarvisConnections(settings, next);
 }
 
 export function providerName(settings: Settings): string {
@@ -215,9 +265,12 @@ export function settingsForRequest(
   return {
     ...requestSettings,
     apiKey: requestSettings.provider === 'local' ? '' : requestSettings.apiKey,
+    jarvisApiKey: requestSettings.jarvisProvider === 'local' ? '' : (requestSettings.jarvisApiKey || ''),
+    // Ses için ayrı anahtar /api/voice tarafından kullanılır; gönderilmezse
+    // "ses modeline ayrı API" özelliği çalışmaz.
+    jarvisSpeechApiKey: requestSettings.jarvisSpeechApiKey || '',
     builtinConnections: {},
     savedApiKeys: [],
-    jarvisSpeechApiKey: '',
     savedCustomProviders: [],
     selectedCustomProviderId: '',
   };
@@ -267,6 +320,17 @@ export function loadSettings(): Settings {
     merged.selectedCustomProviderId =
       typeof parsed.selectedCustomProviderId === 'string' ? parsed.selectedCustomProviderId : '';
     merged.jarvisMode = parsed.jarvisMode === true;
+    merged.jarvisFastMode = parsed.jarvisFastMode !== false;
+    merged.jarvisAutoSend = parsed.jarvisAutoSend !== false;
+    merged.jarvisSilenceMs = [1500, 2000, 2500, 3000, 3500].includes(parsed.jarvisSilenceMs)
+      ? parsed.jarvisSilenceMs
+      : DEFAULT_SETTINGS.jarvisSilenceMs;
+    merged.jarvisProvider = ['inherit', 'gemini', 'openai', 'anthropic', 'custom', 'local'].includes(parsed.jarvisProvider)
+      ? parsed.jarvisProvider
+      : 'inherit';
+    merged.jarvisApiKey = typeof parsed.jarvisApiKey === 'string' ? parsed.jarvisApiKey : '';
+    merged.jarvisModel = typeof parsed.jarvisModel === 'string' ? parsed.jarvisModel : '';
+    merged.jarvisApiBaseUrl = typeof parsed.jarvisApiBaseUrl === 'string' ? parsed.jarvisApiBaseUrl : '';
     merged.jarvisVoiceURI =
       typeof parsed.jarvisVoiceURI === 'string' ? parsed.jarvisVoiceURI : '';
     // Old Gemini-only speech now inherits the explicitly selected main API.
@@ -284,7 +348,14 @@ export function loadSettings(): Settings {
       merged[field] = typeof parsed[field] === 'string' ? parsed[field] : active?.[savedField] || DEFAULT_SETTINGS[field];
     }
     merged.jarvisCloudVoice = typeof parsed.jarvisCloudVoice === 'string' ? parsed.jarvisCloudVoice : 'Kore';
+    merged.jarvisSpeechProvider = ['inherit', 'gemini', 'custom'].includes(parsed.jarvisSpeechProvider)
+      ? parsed.jarvisSpeechProvider
+      : 'inherit';
     merged.jarvisSpeechApiKey = typeof parsed.jarvisSpeechApiKey === 'string' ? parsed.jarvisSpeechApiKey : '';
+    merged.jarvisSpeechModel = typeof parsed.jarvisSpeechModel === 'string' ? parsed.jarvisSpeechModel : '';
+    merged.jarvisSpeechApiBaseUrl = typeof parsed.jarvisSpeechApiBaseUrl === 'string' ? parsed.jarvisSpeechApiBaseUrl : '';
+    merged.jarvisBargeIn = parsed.jarvisBargeIn === true;
+    merged.jarvisAudioCues = parsed.jarvisAudioCues !== false;
     merged.jarvisInstructions = typeof parsed.jarvisInstructions === 'string' ? parsed.jarvisInstructions.slice(0, 4000) : '';
     merged.thinkingMode = ['fast', 'medium', 'high'].includes(parsed.thinkingMode) ? parsed.thinkingMode : DEFAULT_SETTINGS.thinkingMode;
     if (!['natural', 'warm', 'calm'].includes(merged.jarvisVoiceTone)) {
@@ -309,7 +380,7 @@ export function saveSettings(settings: Settings, vaultSaved = false): void {
   if (typeof window === 'undefined') return;
   try {
     // Once migration is acknowledged, browser storage contains preferences only.
-    const stored = vaultSaved ? { ...settings, apiKey: '', jarvisSpeechApiKey: '', savedApiKeys: [],
+    const stored = vaultSaved ? { ...settings, apiKey: '', jarvisSpeechApiKey: '', jarvisApiKey: '', savedApiKeys: [],
       builtinConnections: {}, savedCustomProviders: settings.savedCustomProviders.map((p) => ({ ...p, apiKey: '' })) } : settings;
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
   } catch {

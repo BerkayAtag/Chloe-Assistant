@@ -21,9 +21,14 @@ const keysSeen = new Set();
 let behavior = 'normal';
 let toolRequests = 0;
 let comparedOriginalAndProposal = false;
+let redundantProposalFollowups = 0;
+let repairRequests = 0;
+let forcedSummaries = 0;
+const sessionHeaders = [];
 const server = http.createServer(async (request, response) => {
   let raw = ''; for await (const chunk of request) raw += chunk;
   const body = JSON.parse(raw); const key = request.headers.authorization;
+  sessionHeaders.push({ key, session: request.headers['x-session-id'] });
   if (body.tools?.length) toolRequests++;
   keysSeen.add(key);
   const prompt = body.messages.filter((m) => m.role === 'user').at(-1)?.content || '';
@@ -32,15 +37,20 @@ const server = http.createServer(async (request, response) => {
     if (prompt.includes('"before":"QA original"') && prompt.includes('"proposed":"QA changed content"')) comparedOriginalAndProposal = true;
     content = JSON.stringify({ reviews: [{ path: 'note.txt', verdict: behavior === 'file-rejected' ? 'changes_requested' : 'approved', summary: 'QA synthetic review. Tests not executed by agent.' }] });
   } else if (prompt.includes('Yalnızca JSON')) {
+    if (behavior === 'repair') repairRequests++;
     if (behavior === 'cancel') await new Promise((resolve) => setTimeout(resolve, 5000));
-    content = behavior === 'invalid' ? 'not a plan' : JSON.stringify({ tasks: [
+    content = behavior === 'invalid' ? 'not a plan' : behavior === 'repair' && repairRequests === 1 ? JSON.stringify({ tasks: [{ id: 't1', agentId: 'invented-worker', title: 'Bad identity', instructions: 'Inspect', dependsOn: [] }] }) : JSON.stringify({ tasks: [
       { id: 't1', agentId: 'qa-worker', title: 'İnceleme', instructions: 'QA incelemesi', dependsOn: [] },
       { id: 't2', agentId: 'qa-worker', title: 'Denetim', instructions: 'QA denetimi', dependsOn: ['t1'] },
     ] });
+  } else if (behavior === 'drain' && prompt.includes('Görevin:')) {
+    if (body.tool_choice === 'none') forcedSummaries++;
+    else toolCalls = [{ id: `qa-read-${body.messages.length}`, type: 'function', function: { name: 'readFile', arguments: JSON.stringify({ path: 'note.txt' }) } }];
   } else if (behavior === 'fallback' && prompt.includes('CODEX_FILE_PROPOSAL:')) {
     content = JSON.stringify({ path: 'note.txt', content: 'QA fallback code proposal' });
   } else if (behavior.startsWith('file') && prompt.includes('Görevin: QA incelemesi')) {
     const previous = body.messages.filter((m) => m.role === 'tool');
+    if (previous.length >= 2) redundantProposalFollowups++;
     if (previous.length === 0) toolCalls = [{ id: 'qa-read', type: 'function', function: { name: 'readFile', arguments: JSON.stringify({ path: path.join(await fs.realpath(folder), 'note.txt') }) } }];
     if (previous.length === 1) toolCalls = [{ id: 'qa-propose', type: 'function', function: { name: 'proposeFile', arguments: JSON.stringify({ path: path.join(await fs.realpath(folder), 'note.txt'), content: 'QA changed content' }) } }];
   } else if (behavior === 'unsafe' && prompt.includes('Görevin: QA incelemesi') && !body.messages.some((m) => m.role === 'tool')) {
@@ -81,10 +91,17 @@ try {
   check('agent endpoint switch cannot leak old key', changedEndpoint.status === 200 && !changedEndpoint.agents.find((a) => a.id === 'qa-worker').hasKey);
   await api({ action: 'saveAgents', agents });
   check('agent connection test', (await api({ action: 'testAgent', id: 'qa-worker' })).status === 200);
+  sessionHeaders.length = 0;
   const completed = await settled(await start());
   check('plan, dependent workers and synthesis complete', completed.status === 'completed' && completed.tasks.length === 2 && completed.tasks.every((t) => t.status === 'completed') && !!completed.result);
   check('separate agent keys reach intended provider', keysSeen.has('Bearer qa-coordinator-only') && keysSeen.has('Bearer qa-worker-only'));
   check('usage and events persisted', completed.calls === 4 && completed.tokens > 0 && completed.events.length >= 6);
+  check('gateway session stays stable per agent within a run', agents.every(a => {
+    const values = sessionHeaders.filter(x => x.key === `Bearer ${a.apiKey}`).map(x => x.session);
+    return values.length >= 2 && values.every(v => typeof v === 'string' && /^[a-f0-9]{32}$/.test(v)) && new Set(values).size === 1;
+  }));
+  const drained = await settled(await start('drain', folder));
+  check('tool workers reserve their final step for a visible result', drained.status === 'completed' && forcedSummaries === 2 && drained.calls === 8);
   await api({ action: 'saveAgents', agents: agents.map((a) => ({ ...a, supportsTools: false })) });
   const beforeTextOnly = toolRequests;
   const textOnly = await settled(await start('normal', folder));
@@ -96,6 +113,10 @@ try {
   check('background work cancelled', (await settled(cancelId)).status === 'cancelled');
   const invalid = await settled(await start('invalid'));
   check('invalid model plan fails visibly', invalid.status === 'failed' && !!invalid.error);
+  repairRequests = 0;
+  const repaired = await settled(await start('repair'));
+  check('invalid agent identity receives one bounded plan repair', repaired.status === 'completed' && repairRequests === 2 && repaired.calls === 5);
+  check('repaired plan uses only registered workers', repaired.tasks.every(t => t.agentId === 'qa-worker') && repaired.events.some(e => e.message.includes('hiçbir çalışan başlatılmadan')));
   behavior = 'file';
   const hash = createHash('sha256').update('QA original').digest('hex');
   check('Codex rejects stale editor context', (await api({ action: 'start', prompt: 'QA Codex stale', workspace: folder, focusFile: 'note.txt', expectedHash: '0'.repeat(64) })).status === 400);
@@ -104,6 +125,7 @@ try {
   check('Codex hands off the exact workspace and file', focus.status === 202 && focus.run.focusFile === 'note.txt' && focus.run.workspace === await fs.realpath(folder));
   const fileRun = await settled(focus.run.id);
   check('file tool produces proposal', fileRun.status === 'completed' && fileRun.artifacts.length === 1);
+  check('focused proposal stops before redundant model follow-up', redundantProposalFollowups === 0);
   check('final review compares original and proposal and reports deterministic write state', comparedOriginalAndProposal && fileRun.result.startsWith('UYGULAMA DURUMU:'));
   check('no automatic file overwrite', await fs.readFile(path.join(folder, 'note.txt'), 'utf8') === 'QA original');
   const artifact = fileRun.artifacts[0];

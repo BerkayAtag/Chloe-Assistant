@@ -7,6 +7,7 @@ import {
   createTextStreamResponse,
 } from 'ai';
 import { getProvider } from '@/lib/llm-provider';
+import { createHash } from 'node:crypto';
 import { modelErrorMessage, modelSecrets } from '@/lib/model-error';
 import { addMessage, getMemoryContext, searchMemory } from '@/lib/db';
 import { getIdentity, setAssistantName, setUserName } from '@/lib/identity';
@@ -24,7 +25,7 @@ import { activeCustomProvider, DEFAULT_SETTINGS, hasExplicitConnection, modelLab
 import { localRequestAllowed } from '@/lib/request-origin';
 import { thinkingOptions, thinkingOutputTokenLimit } from '@/lib/thinking-options';
 import { safeRoutedModel, type JarvisEvent } from '@/lib/jarvis-protocol';
-import { jarvisModelSettings } from '@/lib/jarvis-model';
+import { jarvisEffectiveSettings, jarvisModelSettings } from '@/lib/jarvis-model';
 
 // Derin araştırma; arama, sayfa okuma ve özetleme adımları nedeniyle normal
 // sohbetten uzun sürebilir.
@@ -140,26 +141,66 @@ export async function POST(req: Request) {
   }
   const { messages, settings, conversationId } = body;
   if (!hasExplicitConnection(settings)) return new Response('Etkin AI sağlayıcısını ayarlardan seç. Varsayılan sağlayıcıya otomatik geçilmedi.', { status: 400 });
-  const s: Settings = jarvisModelSettings({ ...DEFAULT_SETTINGS, ...(settings || {}) });
-  const jarvisMode = s.jarvisMode === true;
-  const fastVoice = jarvisMode && s.jarvisFastMode !== false;
+
+  // Son kullanıcı mesajı hem sağlayıcı seçimi hem araç gereksinimi için gerekir.
+  const lastUserContent =
+    Array.isArray(messages) && messages.length > 0
+      ? messages
+          .slice()
+          .reverse()
+          .find((m: { role?: string; content?: string }) => m?.role === 'user')?.content
+      : undefined;
+
+  const incoming: Settings = { ...DEFAULT_SETTINGS, ...(settings || {}) };
+  const jarvisMode = incoming.jarvisMode === true;
+  const fastVoice = jarvisMode && incoming.jarvisFastMode !== false;
   const eventProtocol = jarvisMode && body.streamProtocol === 'jarvis-v1';
+  // Sesli tur mu? Yalnızca mikrofon/hands-free girişleri `voiceTurn` gönderir.
+  const voiceTurn = jarvisMode && body.voiceTurn === true;
+
+  // Kullanıcı sözü internet/araç gerektiriyorsa ana bağlantı (varsayılan API) kullanılır.
+  const utteranceNeedsTools = /araştır|internette|güncel|haber|hava durumu|kaynak|avatar|görselini|hatırlıyor/iu.test(lastUserContent || '');
+  const needsTools = !fastVoice || utteranceNeedsTools;
+
+  // Sağlayıcı seçimi:
+  // - Hızlı SESLİ tur → Jarvis'e özel bağlantı (tanımlıysa), araç gerekmiyorsa.
+  // - Yazılı sohbet / internet işi → ana bağlantı (FreeLLMAPI) + araçlar.
+  const useJarvisConnection = voiceTurn && !needsTools;
+  let s: Settings;
+  try {
+    s = useJarvisConnection ? jarvisEffectiveSettings(incoming) : jarvisModelSettings(incoming);
+  } catch (error) {
+    return new Response(
+      error instanceof Error ? error.message : 'Jarvis bağlantısı yapılandırılamadı.',
+      { status: 400 }
+    );
+  }
   if (fastVoice) s.thinkingMode = 'fast';
   let routedModel: string | null = null;
   let routingEvent: ((event: JarvisEvent) => void) | undefined;
 
+  // Oturum sabitleme: FreeLLMAPI aynı konuşmada aynı modeli tercih eder (30 dk).
+  // Konuşma kimliği yoksa ilk kullanıcı mesajından deterministik bir kimlik üretilir.
+  const sessionSource = conversationId || (lastUserContent || '').slice(0, 400);
+  const sessionId = sessionSource
+    ? createHash('sha1').update(String(sessionSource)).digest('hex').slice(0, 32)
+    : undefined;
+
   let provider;
   try {
-    provider = getProvider(s, { onResponse: (headers) => {
-      routedModel = safeRoutedModel(headers.get('x-routed-via'));
-      if (routedModel) routingEvent?.({ type: 'routing', servedModel: routedModel });
-    } });
+    provider = getProvider(s, {
+      ...(sessionId ? { headers: { 'X-Session-Id': sessionId } } : {}),
+      onResponse: (headers) => {
+        routedModel = safeRoutedModel(headers.get('x-routed-via'));
+        if (routedModel) routingEvent?.({ type: 'routing', servedModel: routedModel });
+      },
+    });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Model yapılandırması hatalı.';
     return new Response(msg, { status: 400 });
   }
 
-  // Kullanıcının son mesajını kaydet + otomatik isim algıla
+  // Kullanıcının son mesajını kaydet
   if (conversationId && Array.isArray(messages) && messages.length > 0) {
     const lastUser = messages[messages.length - 1];
     if (lastUser?.role === 'user' && typeof lastUser.content === 'string') {
@@ -173,13 +214,6 @@ export async function POST(req: Request) {
 
   // Otomatik isim değişikliği: "adın artık X olsun" → asistan adı,
   // "benim adım X" → kullanıcı adı. Model araç çağırmasa bile çalışır.
-  const lastUserContent =
-    Array.isArray(messages) && messages.length > 0
-      ? messages
-          .slice()
-          .reverse()
-          .find((m: { role?: string; content?: string }) => m?.role === 'user')?.content
-      : undefined;
   if (typeof lastUserContent === 'string' && lastUserContent.trim()) {
     const newAssistantName = detectNameChange(lastUserContent, ASSISTANT_NAME_PATTERNS);
     if (newAssistantName) setAssistantName(newAssistantName);
@@ -191,9 +225,6 @@ export async function POST(req: Request) {
   const assistantName = identity.assistantName || 'Chloe';
   const userName = identity.userName;
   const webSearchOn = s.webSearch !== false;
-
-  // Local model araçları desteklemiyorsa tools gönderme (Ollama 400 döner)
-  const needsTools = !fastVoice || /araştır|internette|güncel|haber|hava durumu|kaynak|avatar|görselini|hatırlıyor/iu.test(lastUserContent || '');
   const toolsSupported = needsTools && (
     s.provider === 'local'
       ? localToolsAreReliable(s.ollamaModel) &&
