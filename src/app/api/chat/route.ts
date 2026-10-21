@@ -26,6 +26,7 @@ import { localRequestAllowed } from '@/lib/request-origin';
 import { thinkingOptions, thinkingOutputTokenLimit } from '@/lib/thinking-options';
 import { safeRoutedModel, type JarvisEvent } from '@/lib/jarvis-protocol';
 import { jarvisEffectiveSettings, jarvisModelSettings } from '@/lib/jarvis-model';
+import { voiceContext } from '@/lib/voice-context';
 
 // Derin araştırma; arama, sayfa okuma ve özetleme adımları nedeniyle normal
 // sohbetten uzun sürebilir.
@@ -240,7 +241,7 @@ export async function POST(req: Request) {
   // metni istemci tarafından mesaj metnine eklenir; fotoğraflar ise data URL
   // olarak doğrudan görsel anlayabilen bulut modellere aktarılır.
   const modelMessages = Array.isArray(messages)
-    ? (fastVoice ? messages.slice(-16) : messages).map((message: { role: string; content: string; attachments?: Array<{ dataUrl?: string; mimeType?: string }> }) => {
+    ? (fastVoice && !needsTools ? voiceContext(messages) : messages).map((message: { role: string; content: string; attachments?: Array<{ dataUrl?: string; mimeType?: string }> }) => {
         const imageParts = (message.attachments || [])
           .filter((file) => file.dataUrl && file.mimeType?.startsWith('image/'))
           .map((file) => ({ type: 'file' as const, data: file.dataUrl as string, mediaType: file.mimeType as string }));

@@ -84,3 +84,19 @@ test('uzun metin sınır uzunluğunu aşmadan parçalanır', () => {
 test('geçersiz parça uzunluğu hata verir', () => {
   assert.throws(() => splitSpeechText('metin', 0), /positive integer/);
 });
+
+test('kısa selamlama yanıtın bitmesini beklemez ve ikinci cümle kaybolmaz', () => {
+  const clips = []; const buffer = createSpeechTextBuffer(t => clips.push(t));
+  buffer.push('Merhaba! ');
+  assert.deepEqual(clips, ['Merhaba!']);
+  buffer.push('Nasıl yardımcı olabilirim?'); buffer.finish();
+  assert.equal(clips.join(' '), 'Merhaba! Nasıl yardımcı olabilirim?');
+});
+
+test('kısa kısaltma, ondalık ve bölünmüş kelime erken okunmaz', () => {
+  const clips = []; const buffer = createSpeechTextBuffer(t => clips.push(t));
+  buffer.push('Dr. '); assert.equal(clips.length, 0);
+  buffer.push('Ada 3.14'); assert.equal(clips.length, 0);
+  buffer.push(' diyor.'); buffer.finish();
+  assert.equal(clips.join(' '), 'Dr. Ada 3.14 diyor.');
+});

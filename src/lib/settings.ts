@@ -322,7 +322,7 @@ export function loadSettings(): Settings {
     merged.jarvisMode = parsed.jarvisMode === true;
     merged.jarvisFastMode = parsed.jarvisFastMode !== false;
     merged.jarvisAutoSend = parsed.jarvisAutoSend !== false;
-    merged.jarvisSilenceMs = [1500, 2000, 2500, 3000, 3500].includes(parsed.jarvisSilenceMs)
+    merged.jarvisSilenceMs = [900, 1200, 1500, 2000, 2500, 3000, 3500].includes(parsed.jarvisSilenceMs)
       ? parsed.jarvisSilenceMs
       : DEFAULT_SETTINGS.jarvisSilenceMs;
     merged.jarvisProvider = ['inherit', 'gemini', 'openai', 'anthropic', 'custom', 'local'].includes(parsed.jarvisProvider)

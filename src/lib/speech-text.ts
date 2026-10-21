@@ -53,7 +53,10 @@ export function createSpeechTextBuffer(emit: (text: string) => void) {
         if (end) break;
         const candidate = match.index! + match[0].length;
         const prefix = pending.slice(0, candidate);
-        if (candidate >= 24 && (prefix.match(/```/g)?.length || 0) % 2 === 0) { end = candidate; break; }
+        // A complete short opening ("Merhaba!") must not wait for the entire
+        // response. Keep abbreviation/list prefixes and unfinished code intact.
+        const shortOpening = !emitted && candidate >= 3 && /[!?…]$/u.test(prefix.trim());
+        if ((candidate >= 24 || shortOpening) && (prefix.match(/```/g)?.length || 0) % 2 === 0) { end = candidate; break; }
       }
       if (!end && pending.length > 500 && !pending.includes('```')) end = pending.lastIndexOf(' ', 500);
       if (!end && !final) break;

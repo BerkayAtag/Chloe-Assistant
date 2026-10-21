@@ -24,6 +24,7 @@ let comparedOriginalAndProposal = false;
 let redundantProposalFollowups = 0;
 let repairRequests = 0;
 let forcedSummaries = 0;
+let artifactRepairs = 0;
 const sessionHeaders = [];
 const server = http.createServer(async (request, response) => {
   let raw = ''; for await (const chunk of request) raw += chunk;
@@ -35,7 +36,11 @@ const server = http.createServer(async (request, response) => {
   let content = 'Görev tamamlandı. QA denetimi geçti.'; let toolCalls;
   if (prompt.includes('ARTIFACT_REVIEW_GATE')) {
     if (prompt.includes('"before":"QA original"') && prompt.includes('"proposed":"QA changed content"')) comparedOriginalAndProposal = true;
-    content = JSON.stringify({ reviews: [{ path: 'note.txt', verdict: behavior === 'file-rejected' ? 'changes_requested' : 'approved', summary: 'QA synthetic review. Tests not executed by agent.' }] });
+    content = JSON.stringify({ reviews: [{ path: 'note.txt', verdict: behavior === 'file-rejected' || (behavior.startsWith('file-repair') && !artifactRepairs) ? 'changes_requested' : 'approved', summary: 'QA synthetic review. Tests not executed by agent.' }] });
+  } else if (prompt.includes('DENETIM_DUZELTMESI')) {
+    artifactRepairs++;
+    if (behavior === 'file-repair-conflict') await fs.writeFile(path.join(folder, 'note.txt'), 'QA external change during repair');
+    content = JSON.stringify({ files: [{ path: 'note.txt', content: 'QA repaired content' }] });
   } else if (prompt.includes('Yalnızca JSON')) {
     if (behavior === 'repair') repairRequests++;
     if (behavior === 'cancel') await new Promise((resolve) => setTimeout(resolve, 5000));
@@ -139,6 +144,15 @@ try {
   const rejected = await settled(await start('file-rejected', folder));
   check('negative final review prevents successful completion', rejected.status === 'failed' && rejected.artifacts[0]?.review?.verdict === 'changes_requested');
   check('negative final review blocks file application', (await api({ action: 'apply', id: rejected.id, artifactId: rejected.artifacts[0].id })).status === 400);
+  check('negative review stops after one repair rather than bypassing gate', artifactRepairs === 1 && rejected.tasks.some(t => t.id === 'codex-final-review-2'));
+  artifactRepairs = 0;
+  const repairedFile = await settled(await start('file-repair', folder));
+  check('review feedback triggers one repair and a fresh approval', repairedFile.status === 'completed' && artifactRepairs === 1 && repairedFile.artifacts[0].content === 'QA repaired content' && repairedFile.artifacts[0].review.verdict === 'approved');
+  check('repair never writes project without explicit apply', await fs.readFile(path.join(folder, 'note.txt'), 'utf8') === 'QA changed content');
+  artifactRepairs = 0;
+  const conflictingRepair = await settled(await start('file-repair-conflict', folder));
+  check('repair cannot rebase over an external edit silently', conflictingRepair.status === 'failed' && conflictingRepair.error.includes('düzeltme sırasında değişti') && await fs.readFile(path.join(folder, 'note.txt'), 'utf8') === 'QA external change during repair');
+  await fs.writeFile(path.join(folder, 'note.txt'), 'QA changed content');
   for (const mode of ['fallback', 'missing-proposal']) {
     behavior = mode;
     const launched = await api({ action: 'start', prompt: 'QA Codex proposal ' + mode, workspace: folder, focusFile: 'note.txt', expectedHash: currentHash, webSearch: false });

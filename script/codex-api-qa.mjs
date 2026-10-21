@@ -17,11 +17,13 @@ async function post(route, body, signal) {
   return { status: response.status, ...await response.json() };
 }
 let seenModel = '';
+let finishReason = 'stop';
+let modelOutput = 'export const created = true;\n';
 const model = http.createServer(async (req, res) => {
   let text = ''; for await (const part of req) text += part;
   const body = JSON.parse(text); seenModel = body.model;
   res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ id: 'qa', object: 'chat.completion', created: 1, model: body.model, choices: [{ index: 0, message: { role: 'assistant', content: 'export const created = true;\n' }, finish_reason: 'stop' }], usage: { prompt_tokens: 2, completion_tokens: 6, total_tokens: 8 } }));
+  res.end(JSON.stringify({ id: 'qa', object: 'chat.completion', created: 1, model: body.model, choices: [{ index: 0, message: { role: 'assistant', content: modelOutput }, finish_reason: finishReason }], usage: { prompt_tokens: 2, completion_tokens: 6, total_tokens: 8 } }));
 });
 await new Promise((resolve) => model.listen(0, '127.0.0.1', resolve));
 try {
@@ -56,6 +58,16 @@ try {
   check('cancel kills command group and releases project lock', stopped);
   const ai = await post('/api/codex', { filename: 'empty.ts', source: '', instruction: 'Create an export', settings: { provider: 'cloud', cloudProvider: 'custom', apiKey: 'qa-only', apiBaseUrl: `http://127.0.0.1:${model.address().port}/v1`, customModel: 'qa-current-provider', cloudModel: 'qa-current-provider', customProviderName: 'QA', customSupportsTools: false, savedCustomProviders: [], selectedCustomProviderId: '' } });
   check('AI can create code in an empty file using selected provider', ai.status === 200 && ai.source.includes('created') && seenModel === 'qa-current-provider');
+  const generation = { filename: 'empty.ts', source: '', instruction: 'Create an export', settings: { provider: 'cloud', cloudProvider: 'custom', apiKey: 'qa-only', apiBaseUrl: `http://127.0.0.1:${model.address().port}/v1`, customModel: 'qa-current-provider', customSupportsTools: false } };
+  finishReason = 'length';
+  const cut = await post('/api/codex', generation);
+  check('truncated generation is not offered as complete code', cut.status === 500 && !cut.source && cut.error.includes('tamamını'));
+  finishReason = 'content_filter';
+  const filtered = await post('/api/codex', generation);
+  check('content-filtered partial code is rejected', filtered.status === 500 && !filtered.source);
+  finishReason = 'stop'; modelOutput = 'ğ'.repeat(61000);
+  const oversized = await post('/api/codex', generation);
+  check('generated code respects workspace UTF-8 byte limit', oversized.status === 500 && !oversized.source && oversized.error.includes('120 KB'));
   check('OAuth setup rejects missing application header', (await post('/api/integrations/setup', { provider: 'google', clientId: 'qa', clientSecret: 'qa' })).status === 403);
   const malformedEmail = await fetch(base + '/api/integrations/connect/google?email=not-an-email', { redirect: 'manual' });
   check('OAuth rejects malformed email before contacting provider', malformedEmail.status === 400);

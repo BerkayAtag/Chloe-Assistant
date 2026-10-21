@@ -32,6 +32,13 @@ try {
   check('timing is measured and stream has completion marker', events.some((e) => e.type === 'timing' && e.firstTokenMs <= e.totalMs) && events.at(-1).type === 'done');
   const legacy = await post('/api/chat', { settings: { ...settings, jarvisMode: false }, messages: [{ role: 'user', content: 'Merhaba' }] });
   check('ordinary chat keeps legacy text response', legacy.status === 200 && (await legacy.text()).startsWith('Merhaba'));
+  const longHistory = [{ role: 'user', content: 'old-context '.repeat(2000) }, { role: 'assistant', content: 'Önceki kısa yanıt.' }, { role: 'user', content: 'Merhaba!' }];
+  const bounded = await post('/api/chat', { settings, messages: longHistory, voiceTurn: true, streamProtocol: 'jarvis-v1' });
+  await bounded.text();
+  check('fast voice bounds old context but keeps latest instruction', !JSON.stringify(captured.messages).includes('old-context ') && captured.messages.at(-1).content === 'Merhaba!');
+  const regular = await post('/api/chat', { settings: { ...settings, jarvisMode: false }, messages: longHistory });
+  await regular.text();
+  check('normal chat retains its complete context', JSON.stringify(captured.messages).includes('old-context '));
   const invalid = await post('/api/chat', { settings: {}, messages: [{ role: 'user', content: 'Hello' }], streamProtocol: 'jarvis-v1' });
   check('missing connection cannot silently select Gemini', invalid.status === 400);
   const command = await post('/api/jarvis/command', { instruction: 'Hesap Makinesini aç', settings });

@@ -5,10 +5,43 @@
 > ne yarım, ne sırada. Her anlamlı işten sonra buraya bir madde ekle.
 
 - **Proje:** `/Users/n64800/Documents/antigravity/aiasistant/kisisel-ai-asistan`
-- **Paket:** `chloe-assistant` v0.2.6 · Next.js 16.4 · React 19 · TypeScript 5 · Tailwind v4
+- **Paket:** `chloe-assistant` v0.2.7 · Next.js 16.4 · React 19 · TypeScript 5 · Tailwind v4
 - **Dağıtım:** macOS native `Chloe.app` (Swift WebView) + yerel Next.js sunucusu
 - **Sunucu adresi:** `http://127.0.0.1:3004` (native app kendi sunucusunu başlatır)
-- **Son güncelleme:** 2026-10-19 — v0.2.6 mikrofon turu, PCM ses akışı, sağlayıcı güvenliği, tek uygulama kurulumu ve gerçek ekip kodlama testi
+- **Son güncelleme:** 2026-10-21 — v0.2.7 yerel derleme: Jarvis gecikmesi, eksik kod koruması, bütçeli ekip düzeltme döngüsü; GitHub yayın denetimi sürüyor
+
+## 2026-10-20 — Jarvis yanıt gecikmesi takip düzeltmesi
+
+- Referans: [Jarvis Gemini sağlayıcısı](https://github.com/akshayaggarwal99/jarvis-ai-assistant/blob/main/src/core/providers/gemini-provider.ts) akışlı yanıt ve Flash-Lite modeli kullanıyor. Aynı API anahtarı; aynı model, düşünme süresi, sessizlik eşiği veya ses sentezi yolu anlamına gelmez. Sitenin yerel dikte gecikmesi, bütün sesli sohbet gecikmesiyle eş tutulmadı.
+- Kısa tamamlanmış ilk ifadeler (`Merhaba!` gibi) artık 24 karaktere veya yanıtın tamamlanmasına kadar bekletilmiyor. Kısaltma, sayı ve tamamlanmamış kod blokları için korumalar/testler mevcut.
+- Basit hızlı sesli turlarda eski geçmiş son 8 mesaj / 8.000 karakter bütçesiyle sınırlı. En yeni talimat ve ekleri kesilmez; kayıtlı sohbetler silinmez. Normal sohbet ve araç gerektiren işler tam bağlamını korur.
+- Jarvis ayarlarına 900 / 1.200 ms seçenekleri ve “Seri konuşmayı seç (1,2 sn)” düğmesi eklendi. Bu Mac'teki kullanıcı profilinde 2,5 sn yerine 1,2 sn etkinleştirildi; varsayılan tüm kullanıcılar için zorla değiştirilmedi. Uzun duraklamalı talimatlarda süreyi artırmak veya otomatik göndermeyi kapatmak hâlâ mümkün.
+- Kullanıcının sağladığı yeni anahtar yalnız Jarvis metin/ses bağlantılarına şifreli kasa üzerinden kaydedildi. Önceki kayıtlar korunuyor. Ana sohbet/kodlama sağlayıcısı, modeli ve anahtarı değişmediği API üzerinden doğrulandı. Anahtar kaynak dosyalara veya bu günlüğe yazılmadı.
+- Canlı model seçimi: `gemini-3.8-flash` yoğunluk kaynaklı 503 verdi. Aynı yeni anahtarla `gemini-3.5-flash-lite` ilk metni 735 ms'de verdi. Ses modeli `gemini-3.8-flash-lite-tts` doğrudan testte ilk PCM verisini 1.040 ms'de verdi. Eski `gemini-2.5-flash-lite` test edilen yollarda 404/400 döndürdüğünden seçilmedi.
+- Chloe üretim API'si üzerinden canlı doğrulama: `/api/chat` sesli tur HTTP 200, ilk metin **848 ms**, toplam **861 ms**; ayrı `/api/voice` PCM isteği HTTP 200, ilk ses verisi **724 ms**, toplam **1.211 ms**, 103.680 bayt. Bunlar tek örneklem ve ayrı istek ölçümleridir; mikrofon başlangıcından hoparlöre uçtan uca gecikme veya Jarvis ile eşzamanlı karşılaştırma değildir.
+- Doğrulama: **179/179 birim testi**, **15 Jarvis API + 28 anahtar/yönlendirme + 12 Codex API + 17 workbench API kontrolü** geçti. Lint, TypeScript ve `git diff --check` başarılı. API regresyonları sentetik sağlayıcı kullanır; yukarıdaki iki ölçüm gerçek Gemini bağlantısıdır. Workbench ayrı veri alanında, Codex geçici proje klasöründe test edildi.
+- Üretim derlemesi ve macOS kurulum/açılış doğrulaması başarılı. `/Applications/Chloe.app` güncellendi; yeniden açılan native arayüzde `gemini-3.5-flash-lite` ve 1,2 sn seçimi görüldü. “Sesi dene” hazırlıktan hazır durumuna hata göstermeden döndü. Canlı insan konuşmasının doğallığı ve duraklamalarda mikrofon davranışı kullanıcı denemesi gerektirir; bütün fonksiyonların kusursuz olduğu iddia edilmez.
+
+## 2026-10-21 — Ekip düzeltme döngüsü doğrulaması
+
+- Denetçi geri bildirimi geliştiriciye bir kez gönderilir; yalnız reddedilen dosyalar değiştirilebilir ve yeni içerik tekrar denetlenir. İkinci ret veya bütçe/süre sınırı işi durdurur. Olumsuz karar otomatik onaya çevrilmez.
+- Düzeltme yanıtında eksik/fazladan/tekrarlanan dosya yolları ve büyük içerik reddedilir. Düzeltme sırasında dosyanın dışarıdan değiştirilmesi ayrıca denetlenir; yeni sürümün üzerine sessizce yazılmaz.
+- **181/181 birim testi**, ayrı test ofisinde **42/42 API kontrolü**, lint ve üretim derlemesi geçti. Test sunucusu kapatıldı; gerçek kullanıcı ekibi değiştirilmedi.
+- Gerçek seçili sağlayıcıyla ekip planı → kod inceleme → açık uygulama → üretilen kodu çalıştırma testi **78.530 ms / 7 model adımında geçti**. Bu canlı tur ilk denetimde onaylandı; ret/düzeltme/yeniden denetim yolları sentetik API testleriyle ayrıca doğrulandı. Önceki başarısız denemeler tarihsel kanıt olarak aşağıda korunuyor.
+- Son kaynak derlemesi Applications'a kuruldu. GitHub yayını ve kapsamlı güvenlik taramasının tamamlanması hâlâ bekliyor; tüm hedef tamamlanmış değildir.
+- GitHub Actions kalite akışı eklendi: salt okunur depo izniyle Node 22 üzerinde anahtarsız birim testleri, lint ve üretim derlemesi. Uzak CI sonucu yayın öncesi ayrıca kontrol edilmeli.
+
+## 2026-10-20 — Kodlama ve yayın denetimi (devam ediyor)
+
+- Gerçek seçili sağlayıcıyla geçici klasörde kod üretme → kaydetme → proje testini çalıştırma akışı **8/8** geçti.
+- Gerçek ekip denemesinde denetçi, açıkça kapsam dışı bırakılan `null/undefined` desteğini zorunlu sayıp doğru string düzenlemesini reddetti. Denetim istemi artık kabul koşullarını isteğe bağlı iyileştirmelerden ayırıyor; gerçek güvenlik ihlalleri/veri kaybı/regresyonlar yine ret sebebi. Olumlu, güncel içerik hash'ine bağlı denetim kapısı kaldırılmadı. İlk başarısız deneme inceleme için korunuyor.
+- Canlı tekrar **başarısız**: `b9d32135-62a5-499b-a43b-7fc9f6e0a671` çalışmasında sağlayıcı yine kapsam dışı null desteğini güvenlik gerekçesiyle reddetti; yalnız istem düzeltmesi yeterli olmadı. `/tmp/chloe-team-live.IGMMCJ` test klasörü korunuyor, öneri uygulanmadı. Sonraki adım: denetçi geri bildirimini geliştiriciye aktaran bütçeli düzeltme/yeniden denetim akışı; hiçbir olumsuz karar otomatik onaya çevrilmemeli. Ekip kodlama uçtan uca başarılı olarak raporlanmamalı.
+- Codex'in model tarafından kesilmiş veya içerik filtresinde yarım kalmış çıktıyı tam kod olarak sunması engellendi. Üretilen UTF-8 dosyanın editörün 120 KB sınırına uyduğu da yanıt verilmeden kontrol ediliyor.
+- **180 birim testi**, **15 Codex API kontrolü**, lint ve üretim TypeScript/derleme başarılı. Codex API testlerinde üç yeni olumsuz senaryo: çıktı kesilmesi, içerik filtresi, çok baytlı büyük çıktı.
+- Son kaynak derlemesi `/Applications/Chloe.app` üzerine kuruldu; önceki paket kurtarılabilir yedek ZIP/Çöp üzerinden korunuyor. Native pencerenin içerik yüklediği doğrulandı.
+- GitHub API canlı kontrolünde son yayın hâlâ **v0.2.6**, kaynak ZIP ve kurucu mevcut. Bu devam eden düzeltmeler henüz yeni yayına alınmadı; yayın/indirme doğrulaması ve son sürüm numarası yükseltmesi bekliyor.
+- Güvenlik taraması `b977c31a-e0b2-48ec-8142-9eb703f315cb`: ön kontrol hazır; bağımsız temel inceleme ve mimari işçileri kullanım sınırında sonuç döndüremedi. İlk kaynak destekli tehdit haritası ve eksik kapsam kalıcı ara kayda alındı. Tarama tamamlandı veya açık yok denemez; kalan kaynak incelemesi sürdürülmeli.
+- Referans incelemesinde Cline'ın geri alma noktaları ve OpenHands'ın kontrollü yerel yürütme yaklaşımı değerlendirildi. Kalıcı geri alma arayüzü bu turda uygulanmadı; güvenli kodlama geliştirmesi olarak sonraki işlerde tutuluyor.
 
 ---
 

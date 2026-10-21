@@ -5,6 +5,7 @@ import { thinkingOptions } from '@/lib/thinking-options';
 import { DEFAULT_SETTINGS, hasExplicitConnection, type Settings } from '@/lib/settings';
 import { modelErrorMessage, modelSecrets } from '@/lib/model-error';
 import { localRequestAllowed } from '@/lib/request-origin';
+import { MAX_WORKSPACE_FILE_SIZE } from '@/lib/codex-workspace';
 
 const MAX_SOURCE_LENGTH = 80_000;
 const MAX_INSTRUCTION_LENGTH = 8_000;
@@ -52,8 +53,14 @@ export async function POST(request: Request) {
       prompt: `Dosya adı: ${filename}\n\nKullanıcı talimatı:\n${body.instruction.trim()}\n\nDosyanın mevcut içeriği:\n<source>\n${body.source}\n</source>\n\nŞimdi dosyanın düzenlenmiş tam içeriğini döndür.`,
     });
 
+    if (['length', 'content-filter', 'error'].includes(result.finishReason)) {
+      throw new Error('Model dosyanın tamamını üretemedi. Kesilmiş yanıt uygulanabilir kod olarak sunulmadı; daha küçük bir dosya veya uygun başka model seç.');
+    }
     const source = result.text.replace(/^\s*```(?:[\w.+-]+)?[^\S\n]*\n/u, '').replace(/\n```\s*$/u, '');
     if (!source) throw new Error('Model boş bir düzenleme döndürdü.');
+    if (Buffer.byteLength(source, 'utf8') > MAX_WORKSPACE_FILE_SIZE) {
+      throw new Error('Üretilen dosya editörün 120 KB sınırını aşıyor. Kaydedilemeyecek öneri sunulmadı; değişikliği küçük dosyalara böl.');
+    }
     return NextResponse.json({ success: true, source });
   } catch (error: unknown) {
     const message = modelErrorMessage(error, modelSecrets(settings));

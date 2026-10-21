@@ -1,6 +1,6 @@
 {
   "name": "chloe-assistant",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "private": true,
   "scripts": {
     "dev": "next dev -H 127.0.0.1",
@@ -12,7 +12,7 @@
     "test:jarvis": "node --experimental-strip-types --test script/jarvis.test.mjs",
     "test:jarvis-api": "node script/jarvis-api-qa.mjs",
     "test:jarvis-key": "node script/jarvis-key-qa.mjs",
-    "test:speech-text": "node --experimental-strip-types --test script/speech-text.test.mjs",
+    "test:speech-text": "node --experimental-strip-types --test script/speech-text.test.mjs script/voice-context.test.mjs",
     "test:pcm": "node --experimental-strip-types --test script/pcm-stream.test.mjs",
     "test:barge-in": "node --experimental-strip-types --test script/barge-in.test.mjs",
     "test:audio-cues": "node --experimental-strip-types --test script/audio-cues.test.mjs",

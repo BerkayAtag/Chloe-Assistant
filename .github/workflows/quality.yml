@@ -1,0 +1,25 @@
+name: Chloe quality checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run lint
+      - name: Unit and security regression tests (no live API keys)
+        run: node --experimental-strip-types --test script/*.test.mjs
+      - run: npm run build

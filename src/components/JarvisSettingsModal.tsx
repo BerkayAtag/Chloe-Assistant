@@ -363,7 +363,7 @@ export default function JarvisSettingsModal({
                 onChange={(event) => onSettingsChange({ jarvisSilenceMs: Number(event.target.value) })}
                 className={field}
               >
-                {[1500, 2000, 2500, 3000, 3500].map((milliseconds) => (
+                {[900, 1200, 1500, 2000, 2500, 3000, 3500].map((milliseconds) => (
                   <option key={milliseconds} value={milliseconds}>{(milliseconds / 1000).toFixed(1)} saniye</option>
                 ))}
               </select>
@@ -371,6 +371,10 @@ export default function JarvisSettingsModal({
                 Kısa süre daha çabuk yanıt verir; uzun süre cümle içindeki duraklamalarda mikrofonun erken kapanmasını azaltır.
               </span>
             </label>
+            <button type="button" onClick={() => onSettingsChange({ jarvisFastMode: true, jarvisAutoSend: true, jarvisSilenceMs: 1200 })}
+              className="rounded-lg border border-app-border px-3 py-2 text-xs text-app-text hover:bg-app-surface">
+              Seri konuşmayı seç (1,2 sn)
+            </button>
             <label className="flex items-start gap-2 text-xs text-app-text">
               <input type="checkbox" checked={settings.jarvisAutoSend !== false}
                 onChange={(event) => onSettingsChange({ jarvisAutoSend: event.target.checked })} />

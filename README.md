@@ -53,6 +53,7 @@ Chloe; günlük sesli yapay zekâ asistanlığını, derin web araştırmasını
 ### 👥 Ajan Ofisi (Ekip Çalışması)
 - **Rol Odaklı Ajanlar:** Koordinatör, Araştırmacı, Geliştirici ve Denetçi eş zamanlı işbirliği yapar.
 - **Güvenli Dosya İnceleme Kapısı:** Değişiklikler doğrudan dosyalara yazılmaz; önce incelenir, onaylanır ve gerekirse tek tıkla uygulanır.
+- **Sınırlı düzeltme döngüsü:** Denetçi değişiklik isterse geliştirici bir düzeltme turu yapar ve yeni içerik tekrar denetlenir. İkinci ret, süre/bütçe aşımı veya dışarıdan dosya değişikliği işlemi durdurur; ret otomatik onaya çevrilmez.
 - **Çalışma Atölyesi:** Kapsamlı web araştırması, yerel proje mimari analizi, kalıcı hafıza bankası ve ses üretim stüdyosu.
 
 </td>
@@ -64,6 +65,7 @@ Chloe; günlük sesli yapay zekâ asistanlığını, derin web araştırmasını
 ### 💻 Chloe Code Workspace
 - **Proje Gezgini & Düzenleyici:** Yerel proje dizinini seçin, dosyaları tarayın ve yerleşik editörde düzenleyin.
 - **Yapay Zekâ Destekli Değişiklik Önerileri:** Seçili modelden diff ve öneri alın, versiyon çakışmalarını önleyin.
+- **Eksik çıktı koruması:** Modelin kestiği, içerik filtresinde yarım kalan veya editör sınırını aşan yanıt tam dosya olarak önerilmez.
 - **Yerel Proje Denetimleri:** Test, lint ve build komutlarını süre ve çıktı sınırlarıyla güvenle koşturun.
 
 </td>

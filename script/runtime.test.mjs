@@ -60,7 +60,7 @@ test('local choice survives reload even when matching old default', () => {
   try { assert.equal(loadSettings().provider, 'local'); } finally { delete globalThis.window; }
 });
 test('Jarvis silence tolerance restores only supported values and defaults invalid values', () => {
-  for (const milliseconds of [1500, 2000, 2500, 3000, 3500]) {
+  for (const milliseconds of [900, 1200, 1500, 2000, 2500, 3000, 3500]) {
     globalThis.window = { localStorage: { getItem: () => JSON.stringify({ jarvisSilenceMs: milliseconds }) } };
     try { assert.equal(loadSettings().jarvisSilenceMs, milliseconds); } finally { delete globalThis.window; }
   }
