@@ -10,15 +10,20 @@
 - **Sunucu adresi:** `http://127.0.0.1:3004` (native app kendi sunucusunu başlatır)
 - **Son güncelleme:** 2026-10-21 — v0.2.7 yayınlandı ve kurulu uygulama açıldı; GitHub kalite kontrolleri geçti; güvenlik incelemesi kısmi
 
-## 2026-10-21 — Jarvis entegrasyonu: Prompt sistemi (Phase 1)
+## 2026-10-21 — Jarvis entegrasyonu: Prompt + Command Parser + Nudge (Phase 1, 3 & 5)
 
-- [Jarvis AI Assistant](https://github.com/akshayaggarwal99/jarvis-ai-assistant) projesinin `src/prompts/prompts.ts`'indeki **signature preservation** ve **dictation cleaning** kuralları Chloe'ye port edildi.
-- Yeni `src/lib/speech-text.ts` fonksiyonu: `jarvisDictationClean()` — filler kelime temizliği, homophone düzeltmesi (their is → they're), "readme dot md" → "readme.md" dosya uzantısı dönüşümü, sözlü emoji çevirisi (🔥, 👍, ❤️, 😊).
-- `src/lib/jarvis-prompts.ts` oluşturuldu: dictation prompt, email formatting prompt, assistant prompt ve code assistant prompt'ları içerir.
-- `useVoice` hook'unda TTS gönderiminden önce metin `jarvisDictationClean()` ile temizlenir.
-- Yeni test paketi: `script/dictation-clean.test.mjs` (9 test, hepsi geçti).
-- `package.json` test scriptlerine `test:dictation-clean` eklendi.
-- **Doğrulama:** 9/9 dictation test, 27/27 voice-ui test, 34/34 jarvis test, 25/25 speech-text test — **95/95 toplam.** Lint, tsc, production build temiz.
+- [akshayaggarwal99/jarvis-ai-assistant](https://github.com/akshayaggarwal99/jarvis-ai-assistant) projesinin prompt sistemi, command parser ve nudge sistemi Chloe'ye port edildi.
+- **`src/lib/jarvis-prompts.ts`** (yeni): Dictation/email/assistant/code prompts — signature preservation kuralı aktif.
+- **`src/lib/command-parser.ts`** (yeni): 12 intent tipi (open_app, open_browser, code_start, team_start/stop, report, dictation_start/stop, search, file_edit, play_pause, volume). Offline regex matching + LLM fallback.
+- **`src/lib/nudge.ts`** (yeni): Completion nudges — `analyzeText()` (incomplete sentence, open code block, too short), `checkNudges()` (trigger detection), `buildNudgeContext()`.
+- **`src/hooks/useNudge.ts`** (yeni): React hook — assistant mesajı sonrası otomatik nudge check, auto-dismiss.
+- **`src/app/api/nudge/route.ts`** (yeni): POST endpoint — nudge analysis.
+- **`src/app/api/jarvis/command/route.ts`** güncellendi: Layer1 offline + Layer2 LLM fallback. Response: `{ intent, entities, confidence, command, explanation }`.
+- **`src/lib/speech-text.ts`**: `jarvisDictationClean()` — filler, homophones, file extensions, spoken emojis.
+- **`src/hooks/useVoice.ts`**: TTS öncesi `jarvisDictationClean()` uygulanıyor.
+- **Tests**: 36 yeni (9 dictation-clean + 15 command-parser + 12 nudge).
+- **Doğrulama**: Toplam 112/112 test geçti (27 runtime + 27 voice-ui + 34 jarvis + 9 dictation-clean + 15 command-parser + 12 nudge). Lint 0 hata, tsc temiz, production build başarılı.
+
 
 
 ## 2026-10-21 — GitHub kalite ve yayın kontrolü
