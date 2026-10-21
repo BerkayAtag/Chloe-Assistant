@@ -8,11 +8,11 @@
 [![Next.js 16](https://img.shields.io/badge/Next.js-16.4-black?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org)
 [![TypeScript 5](https://img.shields.io/badge/TypeScript-5.0-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Local-First](https://img.shields.io/badge/Security-Local--First%20%26%20Encrypted-10B981?style=for-the-badge&logo=shield&logoColor=white)](#guvenlik)
-[![Release v0.2.6](https://img.shields.io/badge/Release-v0.2.6-8B5CF6?style=for-the-badge&logo=github)](https://github.com/BerkayAtag/chloe-assistant/releases/tag/v0.2.6)
+[![Release v0.2.7](https://img.shields.io/badge/Release-v0.2.7-8B5CF6?style=for-the-badge&logo=github)](https://github.com/BerkayAtag/chloe-assistant/releases/tag/v0.2.7)
 
 <br/>
 
-**[📦 İndir (v0.2.6 · kaynak + kurucu)](https://github.com/BerkayAtag/chloe-assistant/releases/tag/v0.2.6)** ·
+**[📦 İndir (v0.2.7 · kaynak + kurucu)](https://github.com/BerkayAtag/chloe-assistant/releases/tag/v0.2.7)** ·
 **[🚀 Hızlı Kurulum](#kurulum)** ·
 **[🎙️ JARVIS & Ses](#jarvis)** ·
 **[👥 Ajan Ofisi](#ajan-ofisi)** ·
@@ -148,7 +148,7 @@ JARVIS modunu açtığınızda hem konuşabilir hem de tüm yönetim ve kodlama 
 
 ### 1. İndirme Paketi (GitHub Releases)
 En güncel sürüm paketini indirin:
-👉 **[Chloe v0.2.6 İndir (.zip)](https://github.com/BerkayAtag/chloe-assistant/releases/tag/v0.2.6)**
+👉 **[Chloe v0.2.7 İndir (.zip)](https://github.com/BerkayAtag/chloe-assistant/releases/tag/v0.2.7)**
 
 Paketi kalıcı bir klasöre çıkarın ve klasör içindeki **`Install Chloe.command`** dosyasını çift tıklayarak çalıştırın. Kurucu bağımlılıkları derler ve uygulamayı `/Applications/Chloe.app` konumuna kurar.
 

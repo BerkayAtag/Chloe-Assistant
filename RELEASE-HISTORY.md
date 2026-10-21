@@ -8,7 +8,14 @@
 - **Paket:** `chloe-assistant` v0.2.7 · Next.js 16.4 · React 19 · TypeScript 5 · Tailwind v4
 - **Dağıtım:** macOS native `Chloe.app` (Swift WebView) + yerel Next.js sunucusu
 - **Sunucu adresi:** `http://127.0.0.1:3004` (native app kendi sunucusunu başlatır)
-- **Son güncelleme:** 2026-10-21 — v0.2.7 yerel derleme: Jarvis gecikmesi, eksik kod koruması, bütçeli ekip düzeltme döngüsü; GitHub yayın denetimi sürüyor
+- **Son güncelleme:** 2026-10-21 — v0.2.7: GitHub kalite kontrolleri geçti; kaynak + kurucu yayını hazırlanıyor; güvenlik incelemesi kısmi
+
+## 2026-10-21 — GitHub kalite ve yayın kontrolü
+
+- `05589bb` kaynak sürümü için [GitHub Actions 39542583988](https://github.com/BerkayAtag/chloe-assistant/actions/runs/39542583988) tamamlandı: Node 22 temiz kurulum, lint, anahtarsız birim/güvenlik regresyonları ve üretim derlemesi başarılı.
+- README indirme bağlantıları v0.2.7 olarak güncellendi; mevcut gerçek uygulama ekran görüntüleri korundu. Dağıtım kaynak ZIP + macOS kurucudur, bağımsız/noter onaylı bir DMG değildir.
+- Kaynak incelemesi OAuth PKCE/state dönüşü, şifreli bağlantı kasası, Codex komut sınırları ve native köprü/onay kontrolleri üzerinde sürdürüldü. Bağımsız güvenlik işçilerinden tamamlanmış rapor alınamadı; tam depo taraması hâlâ tamamlanmış sayılmaz. Bu sürüm için sıfır güvenlik açığı veya bütün cihazlarda kusursuz çalışma garantisi verilmez.
+- Uçtan uca insan konuşması gecikmesi ayrıca ölçülmeli: önceki ayrı metin/ses istek süreleri mikrofon→hoparlör toplamı olarak sunulmamalı.
 
 ## 2026-10-20 — Jarvis yanıt gecikmesi takip düzeltmesi
 
