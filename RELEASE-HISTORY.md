@@ -10,6 +10,17 @@
 - **Sunucu adresi:** `http://127.0.0.1:3004` (native app kendi sunucusunu başlatır)
 - **Son güncelleme:** 2026-10-21 — v0.2.7 yayınlandı ve kurulu uygulama açıldı; GitHub kalite kontrolleri geçti; güvenlik incelemesi kısmi
 
+## 2026-10-21 — Jarvis entegrasyonu: Prompt sistemi (Phase 1)
+
+- [Jarvis AI Assistant](https://github.com/akshayaggarwal99/jarvis-ai-assistant) projesinin `src/prompts/prompts.ts`'indeki **signature preservation** ve **dictation cleaning** kuralları Chloe'ye port edildi.
+- Yeni `src/lib/speech-text.ts` fonksiyonu: `jarvisDictationClean()` — filler kelime temizliği, homophone düzeltmesi (their is → they're), "readme dot md" → "readme.md" dosya uzantısı dönüşümü, sözlü emoji çevirisi (🔥, 👍, ❤️, 😊).
+- `src/lib/jarvis-prompts.ts` oluşturuldu: dictation prompt, email formatting prompt, assistant prompt ve code assistant prompt'ları içerir.
+- `useVoice` hook'unda TTS gönderiminden önce metin `jarvisDictationClean()` ile temizlenir.
+- Yeni test paketi: `script/dictation-clean.test.mjs` (9 test, hepsi geçti).
+- `package.json` test scriptlerine `test:dictation-clean` eklendi.
+- **Doğrulama:** 9/9 dictation test, 27/27 voice-ui test, 34/34 jarvis test, 25/25 speech-text test — **95/95 toplam.** Lint, tsc, production build temiz.
+
+
 ## 2026-10-21 — GitHub kalite ve yayın kontrolü
 
 - `05589bb` kaynak sürümü için [GitHub Actions 39542583988](https://github.com/BerkayAtag/chloe-assistant/actions/runs/39542583988) tamamlandı: Node 22 temiz kurulum, lint, anahtarsız birim/güvenlik regresyonları ve üretim derlemesi başarılı.
@@ -18,6 +29,17 @@
 - Uçtan uca insan konuşması gecikmesi ayrıca ölçülmeli: önceki ayrı metin/ses istek süreleri mikrofon→hoparlör toplamı olarak sunulmamalı.
 - v0.2.7 GitHub yayını oluşturuldu. Kaynak ZIP `f7415cd` commit'inden üretildi; 3.677.027 bayt, SHA-256 `c586d359cf04b805796e0d314279bb24f393c4688cb9103535fe97cc4d8ba533`. ZIP ve ayrı kurucu GitHub'dan yeniden indirilerek yerel dosyalarla hash eşleşmesi doğrulandı. Kişisel veri/anahtar kasası arşive eklenmedi.
 - `/Applications/Chloe.app` paket sürümü 0.2.7 olarak doğrulandı. Yeniden açılış sonrası yerel sayfa HTTP 200 döndü; native uygulamada sohbet arayüzü ekran görüntüsüyle görüldü. Ana sohbet sağlayıcısı FreeLLMAPI olarak korunuyor.
+
+## 2026-10-21 — Jarvis entegrasyonu: Prompt sistemi + Command Parser (Phase 1 & 5)
+
+- [akshayaggarwal99/jarvis-ai-assistant](https://github.com/akshayaggarwal99/jarvis-ai-assistant) projesinin prompt sistemi ve command parser'ı Chloe'ye port edildi.
+- **`src/lib/jarvis-prompts.ts`** (yeni): Dictation prompt, email formatting prompt, assistant prompt, code assistant prompt — signature preservation kuralı (kullanıcının imzasını asla değiştirme, farklı imza ekleme) aktif.
+- **`src/lib/command-parser.ts`** (yeni): 12 intent tipi (open_app, open_browser, code_start, team_start/stop, report, dictation_start/stop, search, file_edit, play_pause, volume). Offline regex matching + LLM fallback fallback.
+- **`src/app/api/jarvis/command/route.ts`** güncellendi: İlk önce `parseCommand()` ile offline intent çözümlemesi; düşük confidence veya belirsiz komutta LLM'ye fallback. Yeni response şeması: `{ intent, entities, confidence, command, explanation }`.
+- **`src/lib/speech-text.ts`**: `jarvisDictationClean()` fonksiyonu eklendi — filler ("um", "uh"), homophones ("their is" → "they're"), dosya uzantıları ("readme dot md" → "readme.md"), sözlü emojiler (🔥, 👍, ❤️).
+- **`src/hooks/useVoice.ts`** güncellendi: TTS gönderiminden önce `jarvisDictationClean()` uygulanıyor.
+- Yeni test: **`script/dictation-clean.test.mjs`** (9 test), **`script/command-parser.test.mjs`** (15 test).
+- **Doğrulama:** Toplam 95/95 test geçti (27 runtime + 27 voice-ui + 34 jarvis + 9 dictation-clean). Lint 0 hata, tsc temiz, production build başarılı.
 
 ## 2026-10-20 — Jarvis yanıt gecikmesi takip düzeltmesi
 

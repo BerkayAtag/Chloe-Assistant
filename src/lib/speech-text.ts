@@ -34,6 +34,31 @@ export function cleanSpeechText(text: string): string {
     .trim();
 }
 
+/**
+ * Apply Jarvis dictation cleaning rules to text. Preserves signatures while
+ * cleaning fillers, homophones, and converting spoken file extensions/emojis.
+ *
+ * Ported from jarvis-ai-assistant: src/prompts/prompts.ts
+ * Source: https://github.com/akshayaggarwal99/jarvis-ai-assistant (MIT)
+ */
+export function jarvisDictationClean(text: string): string {
+  return text
+    // Remove filler words
+    .replace(/^\s*(um|uh|ah|er|like)\s+/gi, '')
+    .replace(/\s+(um|uh|ah|er)\s+/gi, ' ')
+    // Fix common homophones in dictation context
+    .replace(/\btheir is\b/gi, "they're")
+    .replace(/\bwrite to\b/gi, 'right to')
+    // File extension conversions: "readme dot md" → "readme.md"
+    .replace(/\b(\w+)\s+dot\s+(\w+)\b/gi, '$1.$2')
+    // Spoken emoji conversion
+    .replace(/\bfire emoji\b/gi, '🔥')
+    .replace(/\bthumbs up emoji\b/gi, '👍')
+    .replace(/\bheart emoji\b/gi, '❤️')
+    .replace(/\bsmiling face\b/gi, '😊')
+    .trim();
+}
+
 /** Keep incomplete words and fenced code until a safe speech boundary exists. */
 export function createSpeechTextBuffer(emit: (text: string) => void) {
   let pending = '', emitted = false;

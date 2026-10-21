@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { settingsForRequest, type Settings } from '@/lib/settings';
-import { cleanSpeechText, createSpeechTextBuffer, splitSpeechText } from '@/lib/speech-text';
+import { cleanSpeechText, createSpeechTextBuffer, splitSpeechText, jarvisDictationClean } from '@/lib/speech-text';
 import { createSpeechQueue } from '@/lib/speech-queue';
 import { createBargeInDetector, rmsLevel } from '@/lib/barge-in';
 import { playAudioCue } from '@/lib/audio-cues';
@@ -559,12 +559,13 @@ export function useVoice({ lang = 'tr-TR', onPartial, settings }: UseVoiceOption
       signal: controller.signal,
       preparing: () => { if (current()) setIsPreparingSpeech(true); },
       prepare: async (text) => {
+        const cleanedText = jarvisDictationClean(text);
         const response = await fetch('/api/voice', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           // Sunucu yanıt vermezse istek sonsuza kadar asılı kalmasın; aksi hâlde
           // "Ses hazırlanıyor" durumu kalıcı olur ve hands-free döngüsü durur.
           signal: AbortSignal.any([controller.signal, AbortSignal.timeout(60000)]),
-          body: JSON.stringify({ text, voice: settings.jarvisCloudVoice, tone: settings.jarvisVoiceTone, settings: settingsForRequest(settings),
+          body: JSON.stringify({ text: cleanedText, voice: settings.jarvisCloudVoice, tone: settings.jarvisVoiceTone, settings: settingsForRequest(settings),
             ...(typeof window.AudioContext === 'function' ? { stream: 'pcm-v1' } : {}) }),
         });
         if (!response.ok) {
