@@ -10,6 +10,18 @@
 - **Sunucu adresi:** `http://127.0.0.1:3004` (native app kendi sunucusunu başlatır)
 - **Son güncelleme:** 2026-10-21 — v0.2.7 yayınlandı ve kurulu uygulama açıldı; GitHub kalite kontrolleri geçti; güvenlik incelemesi kısmi
 
+## 2026-10-21 — Yeni Jarvis/Deepgram kodu regresyon düzeltmeleri
+
+- Kullanıcının başka ortamda eklediği `26dcbfb` kaynak sürümü yeniden incelendi; mevcut Release History düzenlemeleri ve `.bak` dosyası korundu.
+- Deepgram WebSocket artık native WebSocket protokol parametreleriyle kimlik doğruluyor; PCM encoding/sample-rate gönderiliyor. Canlı yanıttaki `channel.alternatives` okunuyor (dosya transkripsiyonunun `results.channels` biçimiyle karıştırılmıyor).
+- Bitir işlemi `CloseStream` gönderip son sonuçları bekler; hemen socket kapatmaz. Tekrar bitirme yinelenmez, kapanışta 10 saniyelik üst sınır vardır. Eski bağlantıdan gelen sonuç/hata/kapanış yeni bağlantıyı bozamaz. Sıfır güven skoru korunur.
+- HTTP transkripsiyonunda 25 saniyelik timeout ve istek iptali iletimi eklendi. URL parametreleri güvenli kodlanır. STT API hem Content-Length hem okunan gövdede boyut sınırı uygular; base64 biçimi doğrulanır, gereksiz binary string/Array kopyaları kaldırıldı.
+- Bilgisayar komut API'sinde yüksek güvenli intent için `command: null` döndürülmesi arayüz sözleşmesini bozuyordu. Intent yardımcı veri olarak korunur; mevcut komut-onay arayüzü için gerçek öneri üretilir. Model istemindeki çelişkili intent-JSON talimatı kaldırıldı. Bu düzeltme genel komut üretiminde LLM turunu kaldırmaz.
+- **243/243 test geçti**. Lint, TypeScript ve üretim derlemesi başarılı. Önceki 8 yüzeysel/canlı-ağ Deepgram testi yerine 6 deterministik davranış testi; ayrıca 4 STT route ve 1 komut route regresyon testi var. Canlı Deepgram servisi/anahtarı kullanılmadı; gerçek mikrofon entegrasyonunu kanıtlamaz.
+- Kalanlar: Deepgram'ın aktif Jarvis kayıt akışına ve bağlantı ayarlarına entegrasyonu, yeni registry/MCP/nudge özelliklerinin uçtan uca kullanımı ve güvenlik incelemesi, sonraki sürüm yayını/kurulumu. Bu kaynak düzeltmeleri henüz v0.2.7 yayın paketinde değildir.
+- Yeniden başlatmada ek hata bulundu: boş port için `lsof` çıkış kodu 1, `set -euo pipefail` nedeniyle betiği sessizce sonlandırıyordu. Boş PID normal sonuç olarak ele alınıyor; gerçek helper'ı sahte boş-port yanıtıyla çalıştıran regresyon testi eklendi.
+- Son tekrar **244/244 test** başarılı. `build_and_run.sh --verify` tamamlanıp `/Applications/Chloe.app` yenilendi; önceki uygulama kurtarılabilir yedek/Çöp akışıyla korundu. Sunucu ve JS/CSS HTTP 200 döndü. İlk native pencere boş göründüğünden Cmd+Q ile kapatılıp hazır sunucuyla tekrar açıldı; Jarvis hazır ekranı, mevcut Gemini modeli ve iş alanı kontrolleri görüldü. Soğuk açılışın bu boş-pencere davranışı ayrıca izlenmeli; yalnız HTTP kontrolü görsel başarı sayılmadı.
+
 ## 2026-10-21 — Jarvis entegrasyonu: Tool Registry + Nudge + Parser + Prompts (Phase 1, 2, 3 & 5)
 
 - [akshayaggarwal99/jarvis-ai-assistant](https://github.com/akshayaggarwal99/jarvis-ai-assistant) projesinin prompt sistemi, command parser, nudge sistemi ve tool registry'si Chloe'ye port edildi.
@@ -23,8 +35,10 @@
 - **`src/app/api/jarvis/command/route.ts`** güncellendi: Layer1 offline + Layer2 LLM fallback. Response: `{ intent, entities, confidence, command, explanation }`.
 - **`src/lib/speech-text.ts`**: `jarvisDictationClean()` — filler, homophones, file extensions, spoken emojis.
 - **`src/hooks/useVoice.ts`**: TTS öncesi `jarvisDictationClean()` uygulanıyor.
-- **Tests**: 46 yeni (9 dictation-clean + 15 command-parser + 12 nudge + 10 tool-registry).
-- **Doğrulama**: Toplam 122/122 test geçti (27 runtime + 27 voice-ui + 34 jarvis + 9 dictation-clean + 15 command-parser + 12 nudge + 10 tool-registry). Lint 0 hata, tsc temiz, production build başarılı.
+- **`src/lib/deepgram-stt.ts`** (yeni): Deepgram STT client — `transcribe()` (non-streaming), WebSocket `connect()`/`sendAudio()`/`finish()`, `DEFAULT_CONFIG` (nova-3, smart_format, punctuate).
+- **`src/app/api/stt/route.ts`** (yeni): Deepgram STT POST endpoint — base64 audio → Deepgram API → transcription result.
+- **Tests**: 8 yeni (deepgram-stt).
+- **Doğrulama**: Toplam 135/135 test geçti. Lint 0 hata, tsc temiz, production build başarılı.
 
 
 

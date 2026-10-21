@@ -20,7 +20,9 @@ INSTALL_BUNDLE="/Applications/Chloe.app"
 BACKUP_APPS="$HOME/Library/Application Support/Chloe/app-backups"
 
 server_pid() {
-  lsof -t -nP -iTCP:"$SERVER_PORT" -sTCP:LISTEN 2>/dev/null | head -n 1
+  # lsof exits 1 when the port is free. Under errexit/pipefail that must
+  # remain an empty result, not abort a normal first start/restart.
+  lsof -t -nP -iTCP:"$SERVER_PORT" -sTCP:LISTEN 2>/dev/null | head -n 1 || true
 }
 
 stop_web_server() {

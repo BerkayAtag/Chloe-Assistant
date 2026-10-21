@@ -47,6 +47,8 @@ export class DeepgramSTTClient {
   private apiKey: string;
   private config: DeepgramSTTConfig;
   private socket: WebSocket | null = null;
+  private closeTimer: ReturnType<typeof setTimeout> | undefined;
+  private finishing = false;
 
   constructor(apiKey: string, config: Partial<DeepgramSTTConfig> = {}) {
     this.apiKey = apiKey;
@@ -56,8 +58,12 @@ export class DeepgramSTTClient {
   /**
    * Send a complete audio file for transcription (non-streaming)
    */
-  async transcribe(buffer: Buffer): Promise<TranscriptionResult> {
-    const url = `https://api.deepgram.com/v1/listen?model=${this.config.model}&language=${this.config.language}&smart_format=${this.config.smart_format}&punctuate=${this.config.punctuate}&capitalization=${this.config.capitalization}`;
+  async transcribe(buffer: Buffer, signal?: AbortSignal): Promise<TranscriptionResult> {
+    const params = new URLSearchParams({
+      model: this.config.model || 'nova-3', language: this.config.language || 'en-US',
+      smart_format: String(this.config.smart_format ?? true), punctuate: String(this.config.punctuate ?? true),
+    });
+    const url = `https://api.deepgram.com/v1/listen?${params}`;
     const res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -65,6 +71,7 @@ export class DeepgramSTTClient {
         'Content-Type': 'application/octet-stream',
       },
       body: buffer as unknown as BodyInit,
+      signal: AbortSignal.any([AbortSignal.timeout(25_000), ...(signal ? [signal] : [])]),
     });
     if (!res.ok) {
       throw new Error(`Deepgram API hatasi: ${res.status} ${res.statusText}`);
@@ -74,7 +81,7 @@ export class DeepgramSTTClient {
     return {
       text: channel?.transcript || '',
       isFinal: true,
-      confidence: channel?.confidence || 0.9,
+      confidence: channel?.confidence ?? 0,
       speechFinal: true,
     };
   }
@@ -87,6 +94,8 @@ export class DeepgramSTTClient {
       onError?.('WebSocket desteklenmiyor');
       return false;
     }
+    this.disconnect();
+    this.finishing = false;
     const params = new URLSearchParams({
       model: this.config.model || 'nova-3',
       language: this.config.language || 'en-US',
@@ -94,30 +103,36 @@ export class DeepgramSTTClient {
       punctuate: String(this.config.punctuate ?? true),
       capitalization: String(this.config.capitalization ?? true),
       interim_results: String(this.config.interim_results ?? true),
+      encoding: this.config.encoding || 'linear16',
+      sample_rate: String(this.config.sample_rate || 16000),
     });
     const wsUrl = `wss://api.deepgram.com/v1/listen?${params.toString()}`;
-    const wsOptions: Record<string, unknown> = {};
-    if (typeof window === 'undefined') {
-      wsOptions.headers = { Authorization: `Token ${this.apiKey}` };
+    let socket: WebSocket;
+    try {
+      // Native browser/Node WebSocket accepts protocols, not ws package options.
+      socket = new WebSocket(wsUrl, ['token', this.apiKey]);
+      this.socket = socket;
+    } catch {
+      onError?.('Deepgram bağlantısı başlatılamadı. Anahtar biçimini kontrol et.');
+      return false;
     }
-    // Cast to any — WebSocket browser/native overloads differ, and this only
-    // runs server-side in Chloe's native bridge. Safe within this scope.
-    this.socket = new (WebSocket as unknown as new (url: string, options?: Record<string, unknown>) => WebSocket)(wsUrl, wsOptions);
 
     this.socket.onopen = () => {
       // Ready to receive audio
     };
 
     this.socket.onmessage = (event) => {
+      if (this.socket !== socket) return;
       try {
         const data = JSON.parse(event.data);
-        const channel = data.results?.channels?.[0]?.alternatives?.[0];
+        if (data.type === 'Error') { onError?.('Deepgram ses akışını reddetti.'); this.disconnect(); return; }
+        const channel = data.channel?.alternatives?.[0];
         const transcript = channel?.transcript || '';
         if (transcript.trim()) {
           onResult({
             text: transcript,
             isFinal: data.is_final || false,
-            confidence: (channel?.confidence || 0.9) as number,
+            confidence: (channel?.confidence ?? 0) as number,
             speechFinal: data.speech_final || false,
           });
         }
@@ -126,12 +141,15 @@ export class DeepgramSTTClient {
       }
     };
 
-    this.socket.onerror = (error) => {
-      const msg = error instanceof Error ? error.message : String(error);
-      onError?.(`WebSocket hatasi: ${msg}`);
+    this.socket.onerror = () => {
+      if (this.socket !== socket) return;
+      onError?.('Deepgram WebSocket bağlantısı başarısız.');
+      this.disconnect();
     };
 
     this.socket.onclose = () => {
+      if (this.socket !== socket) return;
+      clearTimeout(this.closeTimer);
       this.socket = null;
     };
 
@@ -142,7 +160,7 @@ export class DeepgramSTTClient {
    * Send audio data chunk for streaming transcription
    */
   sendAudio(data: Buffer): void {
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+    if (!this.finishing && this.socket && this.socket.readyState === WebSocket.OPEN) {
       this.socket.send(data);
     }
   }
@@ -151,9 +169,11 @@ export class DeepgramSTTClient {
    * Finish streaming and get final transcript
    */
   finish(): void {
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-      this.socket.send(JSON.stringify({ type: 'Finalize' }));
-      this.socket.close();
+    if (!this.finishing && this.socket && this.socket.readyState === WebSocket.OPEN) {
+      this.finishing = true;
+      // CloseStream flushes final Results before the server closes the socket.
+      this.socket.send(JSON.stringify({ type: 'CloseStream' }));
+      this.closeTimer = setTimeout(() => this.disconnect(), 10_000);
     }
   }
 
@@ -161,9 +181,11 @@ export class DeepgramSTTClient {
    * Disconnect without finalizing
    */
   disconnect(): void {
+    clearTimeout(this.closeTimer);
     if (this.socket) {
-      this.socket.close();
+      const socket = this.socket;
       this.socket = null;
+      socket.close();
     }
   }
 }

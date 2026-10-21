@@ -5,7 +5,7 @@ import { DEFAULT_SETTINGS, hasExplicitConnection, type Settings } from '@/lib/se
 import { localRequestAllowed } from '@/lib/request-origin';
 import { modelErrorMessage, modelSecrets } from '@/lib/model-error';
 import { thinkingOptions } from '@/lib/thinking-options';
-import { parseCommand, buildClarificationPrompt } from '@/lib/command-parser';
+import { parseCommand } from '@/lib/command-parser';
 
 export const maxDuration = 65;
 export async function POST(request: Request) {
@@ -19,15 +19,14 @@ export async function POST(request: Request) {
 
     // ── Layer 1: Fast offline command parsing (ported from Jarvis) ────────────
     const parsed = parseCommand(body.instruction);
-    if (!parsed.needsClarification && parsed.confidence >= 0.7) {
-      return NextResponse.json({ intent: parsed.intent, entities: parsed.entities, confidence: parsed.confidence, command: null, explanation: null }, { headers: { 'Cache-Control': 'no-store' } });
-    }
+    // The consumer requires an executable proposal plus explanation. An intent
+    // alone is not a completed command and must not return null draft fields.
 
     // ── Layer 2: LLM fallback for ambiguous commands ────────────────────────
     const result = await generateText({ model: getProvider(settings), output: Output.json(), maxRetries: 0, maxOutputTokens: 1000, providerOptions: thinkingOptions(settings),
       abortSignal: AbortSignal.any([request.signal, AbortSignal.timeout(60000)]),
       system: 'macOS için bir komut ÖNERİSİ hazırla; hiçbir araç veya yürütme yetkin yok. Yalnız JSON: {"command":"tek satır zsh komutu","explanation":"Türkçe etki ve risk açıklaması"}. İsteğin belirsizse command boş olsun, explanation içinde soru sor. Silme, kimlik bilgisi okuma, izin/güvenlik ayarı değiştirme, sudo, uzak betik indirip çalıştırma veya dışarı veri gönderme isteminde command boş bırakıp kullanıcıya bu arayüzün bunları otomatik yapmadığını açıkla. Basit uygulama açmada /usr/bin/open kullan. Çalıştırdığını iddia etme.',
-      prompt: body.instruction + (parsed.needsClarification ? `\n\nÖnceki analiz (clarification): ${parsed.clarification}\n${buildClarificationPrompt(body.instruction)}` : `\n\nÖnceki analiz: ${parsed.clarification}\n`),
+      prompt: body.instruction,
     });
     let data;
     try { data = JSON.parse(result.text.trim().replace(/^```(?:json)?\s*/u, '').replace(/\s*```$/u, '')); }
