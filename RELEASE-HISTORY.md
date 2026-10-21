@@ -8,7 +8,7 @@
 - **Paket:** `chloe-assistant` v0.2.7 · Next.js 16.4 · React 19 · TypeScript 5 · Tailwind v4
 - **Dağıtım:** macOS native `Chloe.app` (Swift WebView) + yerel Next.js sunucusu
 - **Sunucu adresi:** `http://127.0.0.1:3004` (native app kendi sunucusunu başlatır)
-- **Son güncelleme:** 2026-10-21 — v0.2.7: GitHub kalite kontrolleri geçti; kaynak + kurucu yayını hazırlanıyor; güvenlik incelemesi kısmi
+- **Son güncelleme:** 2026-10-21 — v0.2.7 yayınlandı ve kurulu uygulama açıldı; GitHub kalite kontrolleri geçti; güvenlik incelemesi kısmi
 
 ## 2026-10-21 — GitHub kalite ve yayın kontrolü
 
@@ -16,6 +16,8 @@
 - README indirme bağlantıları v0.2.7 olarak güncellendi; mevcut gerçek uygulama ekran görüntüleri korundu. Dağıtım kaynak ZIP + macOS kurucudur, bağımsız/noter onaylı bir DMG değildir.
 - Kaynak incelemesi OAuth PKCE/state dönüşü, şifreli bağlantı kasası, Codex komut sınırları ve native köprü/onay kontrolleri üzerinde sürdürüldü. Bağımsız güvenlik işçilerinden tamamlanmış rapor alınamadı; tam depo taraması hâlâ tamamlanmış sayılmaz. Bu sürüm için sıfır güvenlik açığı veya bütün cihazlarda kusursuz çalışma garantisi verilmez.
 - Uçtan uca insan konuşması gecikmesi ayrıca ölçülmeli: önceki ayrı metin/ses istek süreleri mikrofon→hoparlör toplamı olarak sunulmamalı.
+- v0.2.7 GitHub yayını oluşturuldu. Kaynak ZIP `f7415cd` commit'inden üretildi; 3.677.027 bayt, SHA-256 `c586d359cf04b805796e0d314279bb24f393c4688cb9103535fe97cc4d8ba533`. ZIP ve ayrı kurucu GitHub'dan yeniden indirilerek yerel dosyalarla hash eşleşmesi doğrulandı. Kişisel veri/anahtar kasası arşive eklenmedi.
+- `/Applications/Chloe.app` paket sürümü 0.2.7 olarak doğrulandı. Yeniden açılış sonrası yerel sayfa HTTP 200 döndü; native uygulamada sohbet arayüzü ekran görüntüsüyle görüldü. Ana sohbet sağlayıcısı FreeLLMAPI olarak korunuyor.
 
 ## 2026-10-20 — Jarvis yanıt gecikmesi takip düzeltmesi
 
