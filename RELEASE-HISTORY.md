@@ -10,19 +10,22 @@
 - **Sunucu adresi:** `http://127.0.0.1:3004` (native app kendi sunucusunu başlatır)
 - **Son güncelleme:** 2026-10-21 — v0.2.7 yayınlandı ve kurulu uygulama açıldı; GitHub kalite kontrolleri geçti; güvenlik incelemesi kısmi
 
-## 2026-10-21 — Jarvis entegrasyonu: Prompt + Command Parser + Nudge (Phase 1, 3 & 5)
+## 2026-10-21 — Jarvis entegrasyonu: Tool Registry + Nudge + Parser + Prompts (Phase 1, 2, 3 & 5)
 
-- [akshayaggarwal99/jarvis-ai-assistant](https://github.com/akshayaggarwal99/jarvis-ai-assistant) projesinin prompt sistemi, command parser ve nudge sistemi Chloe'ye port edildi.
+- [akshayaggarwal99/jarvis-ai-assistant](https://github.com/akshayaggarwal99/jarvis-ai-assistant) projesinin prompt sistemi, command parser, nudge sistemi ve tool registry'si Chloe'ye port edildi.
+- **`src/lib/tool-registry.ts`** (yeni): Universal Tool Registry — `register()`, `execute()`, `getDefinitions()`, `requiresApproval()`, `has()`. LLM function calling uyumlu şema.
+- **`src/lib/builtin-tools.ts`** (yeni): 5 yerleşik araç: `search_web`, `read_page`, `open_app`, `get_system_info`, `run_command` (approval required).
 - **`src/lib/jarvis-prompts.ts`** (yeni): Dictation/email/assistant/code prompts — signature preservation kuralı aktif.
 - **`src/lib/command-parser.ts`** (yeni): 12 intent tipi (open_app, open_browser, code_start, team_start/stop, report, dictation_start/stop, search, file_edit, play_pause, volume). Offline regex matching + LLM fallback.
-- **`src/lib/nudge.ts`** (yeni): Completion nudges — `analyzeText()` (incomplete sentence, open code block, too short), `checkNudges()` (trigger detection), `buildNudgeContext()`.
+- **`src/lib/nudge.ts`** (yeni): Completion nudges — `analyzeText()` (incomplete sentence, open code block, too short), `checkNudges()`, `buildNudgeContext()`.
 - **`src/hooks/useNudge.ts`** (yeni): React hook — assistant mesajı sonrası otomatik nudge check, auto-dismiss.
 - **`src/app/api/nudge/route.ts`** (yeni): POST endpoint — nudge analysis.
 - **`src/app/api/jarvis/command/route.ts`** güncellendi: Layer1 offline + Layer2 LLM fallback. Response: `{ intent, entities, confidence, command, explanation }`.
 - **`src/lib/speech-text.ts`**: `jarvisDictationClean()` — filler, homophones, file extensions, spoken emojis.
 - **`src/hooks/useVoice.ts`**: TTS öncesi `jarvisDictationClean()` uygulanıyor.
-- **Tests**: 36 yeni (9 dictation-clean + 15 command-parser + 12 nudge).
-- **Doğrulama**: Toplam 112/112 test geçti (27 runtime + 27 voice-ui + 34 jarvis + 9 dictation-clean + 15 command-parser + 12 nudge). Lint 0 hata, tsc temiz, production build başarılı.
+- **Tests**: 46 yeni (9 dictation-clean + 15 command-parser + 12 nudge + 10 tool-registry).
+- **Doğrulama**: Toplam 122/122 test geçti (27 runtime + 27 voice-ui + 34 jarvis + 9 dictation-clean + 15 command-parser + 12 nudge + 10 tool-registry). Lint 0 hata, tsc temiz, production build başarılı.
+
 
 
 

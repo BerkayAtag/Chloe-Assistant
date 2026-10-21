@@ -15,6 +15,7 @@
     "test:dictation-clean": "node --experimental-strip-types --test script/dictation-clean.test.mjs",
     "test:command-parser": "node --experimental-strip-types --test script/command-parser.test.mjs",
     "test:nudge": "node --experimental-strip-types --test script/nudge.test.mjs",
+    "test:tool-registry": "node --experimental-strip-types --test script/tool-registry.test.mjs",
     "test:speech-text": "node --experimental-strip-types --test script/speech-text.test.mjs script/voice-context.test.mjs script/dictation-clean.test.mjs",
     "test:pcm": "node --experimental-strip-types --test script/pcm-stream.test.mjs",
     "test:barge-in": "node --experimental-strip-types --test script/barge-in.test.mjs",
