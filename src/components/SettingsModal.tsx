@@ -58,6 +58,25 @@ export default function SettingsModal({
   const [loadingHealth, setLoadingHealth] = useState(false);
   const testController = useRef<AbortController | null>(null);
   useEffect(() => () => testController.current?.abort(), []);
+  const [closing, setClosing] = useState(false);
+  const closeRef = useRef<() => void>(() => {});
+  // The close button must always respond: a failed vault save used to keep the
+  // dialog open with no feedback. Unsaved changes stay queued and are retried.
+  const close = async () => {
+    if (closing) return;
+    setClosing(true);
+    try {
+      if (await flushSettings()) { onClose(); return; }
+      if (window.confirm('Ayarlar şifreli kasaya kaydedilemedi. Değişiklikler bu oturumda tutulur ve yeniden denenir. Yine de kapatılsın mı?')) onClose();
+    } finally { setClosing(false); }
+  };
+  useEffect(() => { closeRef.current = () => { void close(); }; });
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') closeRef.current(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -297,7 +316,9 @@ export default function SettingsModal({
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       <div role="dialog" aria-modal="true" aria-label="Ayarlar" className="bg-white dark:bg-night-900 border border-gray-300 dark:border-night-750 w-full max-w-lg rounded-2xl shadow-2xl p-6 relative max-h-[90vh] overflow-y-auto custom-scrollbar">
         <button
-          onClick={async () => { if (await flushSettings()) onClose(); }}
+          type="button"
+          onClick={() => { void close(); }}
+          disabled={closing}
           className="absolute top-4 right-4 text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white transition-colors"
           aria-label="Kapat"
         >
@@ -826,6 +847,7 @@ export default function SettingsModal({
           <p className="text-center text-xs text-gray-500 dark:text-gray-400">
             Bağlantı testi sağlayıcına tek bir kısa istek gönderir; kullanım ücretine tabi olabilir.
           </p>
+          <p className="text-center text-[11px] text-gray-400 dark:text-gray-500">© 2026 Berkay Atağ · Chloe Assistant</p>
         </div>
       </div>
     </div>

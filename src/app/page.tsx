@@ -30,7 +30,7 @@ import {
 import { useVoice } from '@/hooks/useVoice';
 import { useSettings, retrySettings } from '@/hooks/useSettings';
 import { hasExplicitConnection, modelLabel, settingsForRequest, updateProviderSettings, type Settings } from '@/lib/settings';
-import { sendNativeAction } from '@/lib/native-bridge';
+import { sendNativeAction, useNativeMac } from '@/lib/native-bridge';
 import { JarvisEventDecoder, type JarvisEvent } from '@/lib/jarvis-protocol';
 import { useJarvisWork } from '@/hooks/useJarvisWork';
 import JarvisWorkPanel from '@/components/JarvisWorkPanel';
@@ -93,6 +93,7 @@ export default function Home() {
   const [isResearching, setIsResearching] = useState(false);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const nativeMac = useNativeMac();
   const [officeOpen, setOfficeOpen] = useState(false);
   const [officeContext, setOfficeContext] = useState({ runId: '', workspace: '' });
   const [jarvisTiming, setJarvisTiming] = useState<{ firstTokenMs?: number; totalMs?: number; audioStartMs?: number; servedModel?: string; connection?: string }>({});
@@ -765,7 +766,7 @@ export default function Home() {
   };
 
   const avatarSrc = avatar.file
-    ? `/${avatar.file}?v=${avatar.version}`
+    ? `/api/avatar?image=1&v=${avatar.version}`
     : '/chloe-portrait.jpg';
 
   if (!settingsReady) return (
@@ -789,6 +790,7 @@ export default function Home() {
         <JarvisConsole
           settings={settings}
           assistantName={settings.assistantName || 'Chloe'}
+          avatarSrc={avatarSrc}
           modelName={`Sesli hızlı tur: ${modelLabel(jarvisEffectiveSettings(settings))}`}
           isListening={voice.isListening}
           isStarting={voice.isStarting}
@@ -1098,9 +1100,12 @@ export default function Home() {
                       <button type="button" onClick={() => selectTool('browser')} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-night-750 ${selectedTool === 'browser' ? 'bg-app-accent/10 text-app-accent dark:text-app-accent' : ''}`}>
                         <Globe size={17} className="text-blue-500" /> Tarayıcı Yönetimi
                       </button>
-                      <button type="button" onClick={() => selectTool('computer')} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-night-750 ${selectedTool === 'computer' ? 'bg-app-accent/10 text-app-accent dark:text-app-accent' : ''}`}>
-                        <Monitor size={17} className="text-orange-500" /> Bilgisayar Yönetimi
-                      </button>
+                      {/* Computer management needs the macOS app's native bridge; elsewhere it could only fail. */}
+                      {nativeMac && (
+                        <button type="button" onClick={() => selectTool('computer')} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-night-750 ${selectedTool === 'computer' ? 'bg-app-accent/10 text-app-accent dark:text-app-accent' : ''}`}>
+                          <Monitor size={17} className="text-orange-500" /> Bilgisayar Yönetimi
+                        </button>
+                      )}
                       <button type="button" onClick={() => selectTool('codex')} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-night-750 ${selectedTool === 'codex' ? 'bg-app-accent/10 text-app-accent dark:text-app-accent' : ''}`}>
                         <Code2 size={17} className="text-emerald-500" /> Codex
                       </button>

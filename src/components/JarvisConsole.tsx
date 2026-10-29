@@ -60,6 +60,8 @@ type CalendarItem = {
 type JarvisConsoleProps = {
   settings: Settings;
   assistantName: string;
+  /** Chloe's portrait (or the user's custom avatar) shown in the header. */
+  avatarSrc?: string;
   modelName: string;
   isListening: boolean;
   isStarting: boolean;
@@ -106,6 +108,7 @@ const STATE_LABELS = {
 export default function JarvisConsole({
   settings,
   assistantName,
+  avatarSrc = '/chloe-portrait.jpg',
   modelName,
   isListening,
   isStarting,
@@ -409,8 +412,9 @@ export default function JarvisConsole({
           >
             <ChevronLeft size={19} />
           </button>
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-app-accent/30 bg-app-accent-soft text-app-accent">
-            <VoiceOrb state={state} compact theme={settings.theme} />
+          <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full border-2 border-app-accent/40 bg-app-accent-soft">
+            {/* eslint-disable-next-line @next/next/no-img-element -- local portrait, same as the chat avatar */}
+            <img src={avatarSrc} alt={assistantName} className="h-full w-full object-cover" draggable={false} />
           </div>
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold tracking-wide">{assistantName} <span className="font-normal text-app-muted">/ JARVIS</span></div>

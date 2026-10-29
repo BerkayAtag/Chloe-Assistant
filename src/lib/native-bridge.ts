@@ -1,4 +1,5 @@
 'use client';
+import { useSyncExternalStore } from 'react';
 
 export type NativeAction = 'openBrowser' | 'openMacManagement' | 'openCodex' | 'startDictation' | 'stopDictation' | 'chooseWorkspace';
 
@@ -35,4 +36,11 @@ function chooseWorkspaceViaServer(): boolean {
     .then((result: { path?: string }) => deliver(result.path))
     .catch(() => deliver());
   return true;
+}
+
+const noSubscription = () => () => {};
+
+/** True only inside the macOS app, whose WebKit bridge runs computer management. */
+export function useNativeMac(): boolean {
+  return useSyncExternalStore(noSubscription, () => Boolean(window.webkit?.messageHandlers?.chloeMac), () => false);
 }

@@ -1,12 +1,14 @@
 ﻿; Chloe Assistant — Windows kurulumu (Inno Setup 6).
-; windows\build-setup.ps1 önce dist\windows\stage klasörünü hazırlar, sonra bu betiği derler.
+; windows\build-setup.ps1 kurulum klasörünü hazırlayıp denedikten sonra bu betiği /DStage ile derler.
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0"
+#endif
+#ifndef Stage
+  #define Stage "..\dist\windows\stage"
 #endif
 #define MyAppName "Chloe Assistant"
 #define MyAppPublisher "Berkay Atağ"
 #define MyAppExeName "Chloe.exe"
-#define Stage "..\dist\windows\stage"
 
 [Setup]
 AppId={{4C2F8E61-9B3D-4E57-A0C8-6D1F2B7A9E34}

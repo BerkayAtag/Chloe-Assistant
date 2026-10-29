@@ -6,10 +6,23 @@
 
 - **Proje:** macOS `/Users/n64800/Documents/antigravity/aiasistant/kisisel-ai-asistan` · Windows `C:\Users\berka\Desktop\Chloe Assistant`
 - **Depo:** https://github.com/BerkayAtag/Chloe-Assistant (public) · Tanıtım sayfası: https://berkayatag.github.io/Chloe-Assistant/
-- **Paket:** `chloe-assistant` v0.2.8 · Next.js 16.4.3 · React 19 · TypeScript 5 · Tailwind v4
+- **Paket:** `chloe-assistant` v0.2.9 · Next.js 16.4.3 · React 19 · TypeScript 5 · Tailwind v4
 - **Dağıtım:** macOS native `Chloe.app` (Swift WebView) + yerel Next.js sunucusu · Windows Inno Setup kurulumu (gömülü Node + bağımsız Next sunucusu + Edge uygulama penceresi)
 - **Sunucu adresi:** `http://127.0.0.1:3004` (native app / Windows başlatıcısı kendi sunucusunu başlatır)
-- **Son güncelleme:** 2026-10-29 — v0.2.8: Windows hata düzeltmeleri, Windows setup, public depo ve GitHub Pages tanıtım sayfası
+- **Son güncelleme:** 2026-10-30 — v0.2.9: Windows kurulumunda API rotalarının çökmesi, Ayarlar kapatma, simge ve görsel düzeltmeleri
+
+## 2026-10-30 — v0.2.9: Windows kurulum düzeltmeleri
+
+- **Kök neden — v0.2.8 Windows kurulumunda tüm API rotaları HTTP 500 veriyordu.** Bağımsız Next sunucusu `next/dist/compiled/next-server/app-route-turbo.runtime.prod.js` dosyasını izleme (tracing) sırasında paketlemiyordu. Önceki paket testi, kurulum klasörü depo içinde olduğu için eksik modülü üst klasördeki `node_modules`'tan buluyor ve hatayı gizliyordu. Sonuçları: ayarlar/anahtar kasası kaydedilemedi (kasa klasörü hiç oluşmadı), sohbet ve diğer işlevler çalışmadı, ekranda `Unexpected token 'I'… not valid JSON` uyarısı göründü.
+  - `outputFileTracingIncludes` ile runtime pakete eklendi.
+  - Kurulum klasörü artık depo dışında (`%TEMP%\ChloeSetupStage`) hazırlanıyor ve `build-setup.ps1` setup'ı derlemeden önce paketlenmiş sunucuyu gerçek kurulum gibi deniyor (sayfa, görsel, simge, manifest, 7 API rotası, ayar kasası; `Cannot find module` görülürse derleme durur).
+- **Ayarlar → sağ üst çarpı kapanmıyordu:** kapatma yalnız kasa kaydı başarılıysa çalışıyordu ve hata olduğunda sessiz kalıyordu. Artık kayıt başarısızsa sorulup yine de kapatılabiliyor (değişiklikler bekletilip yeniden deneniyor); `Esc` de kapatıyor. Kasa yanıtı JSON değilse okunur hata mesajı gösteriliyor.
+- **Chloe görseli:** JARVIS üst başlığına Chloe'nin portresi eklendi (özel avatar seçiliyse o). Özel avatarlar çalışma anında `public/` içine yazıldığı ve üretim sunucusu sonradan eklenen dosyaları sunmadığı için `/api/avatar?image=1` üzerinden veriliyor; görsel yüklenemezse varsayılan portreye dönülüyor.
+- **Görev çubuğu simgesi:** uygulama Next.js'in varsayılan `favicon.ico`'sunu kullanıyordu. Chloe simgesi `favicon.ico`, `icon.png`, `apple-icon.png` ve web manifest olarak eklendi; Edge uygulama penceresi ve görev çubuğu artık kısayoldaki simgeyi gösteriyor (ekran görüntüsüyle doğrulandı).
+- **Yayıncı ve telif:** Program Ekle/Kaldır kaydında Publisher `Berkay Atağ` (kayıt defterinden doğrulandı). `Chloe.exe` dosya bilgisine şirket, telif ve sürüm eklendi; başlatıcı UTF-8 kod sayfasıyla derleniyor (Türkçe hata mesajları bozulmuyor). Uygulamada kenar çubuğu ve Ayarlar altında `© 2026 Berkay Atağ · Chloe Assistant` yazıyor.
+- Windows'ta yalnız macOS'ta çalışan **Bilgisayar Yönetimi** seçeneği (+ menüsü ve JARVIS iş alanı) gizlendi; önceden seçilince yalnızca hata veriyordu.
+- Doğrulama (Windows 11, depo dışı izole kurulum): 245/246 birim testi (kalan test canlı internet ister), Jarvis 15 + anahtar/ses 28 + Codex 15 + Ofis 42 + Atölye 17 API kontrolü geçti; sunucu günlüğünde modül hatası yok. Arayüzde ana sohbet, tema geçişleri, + menüsü, Ajan Ofisi sekmeleri, Beceriler ve Ekip ayarları pencereleri, JARVIS, Ayarlar açma/kapatma denendi; konsol hatası yok. Gerçek `Chloe.exe` ile pencere, görev çubuğu simgesi ve kapanışta sunucunun durması doğrulandı. v0.2.8 kurulumu yeniden kurularak hatanın aynısı (`/api/settings`, `/api/identity`, `/api/avatar` → 500) gösterildi.
+- Doğrulanmayanlar: gerçek model anahtarıyla canlı sohbet/ses, mikrofonla uçtan uca konuşma, Windows klasör penceresinin elle seçimi.
 
 ## 2026-10-29 — v0.2.8: Windows uyumluluğu, hata düzeltmeleri ve Windows setup
 

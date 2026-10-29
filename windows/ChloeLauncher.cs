@@ -13,6 +13,10 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Chloe Assistant")]
 [assembly: System.Reflection.AssemblyProduct("Chloe Assistant")]
+[assembly: System.Reflection.AssemblyCompany("Berkay Atağ")]
+[assembly: System.Reflection.AssemblyCopyright("© 2026 Berkay Atağ · Chloe Assistant")]
+[assembly: System.Reflection.AssemblyVersion(ChloeVersion.Value)]
+[assembly: System.Reflection.AssemblyFileVersion(ChloeVersion.Value)]
 
 static class ChloeLauncher
 {

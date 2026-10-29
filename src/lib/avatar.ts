@@ -142,3 +142,19 @@ export function cleanupOrphanAvatars() {
     /* boş */
   }
 }
+
+const TYPE_BY_EXT: Record<string, string> = Object.fromEntries(Object.entries(EXT_BY_TYPE).map(([type, ext]) => [ext, type]));
+
+/**
+ * Custom avatars are written at runtime, and a production Next.js server only
+ * serves public/ files that existed at build time, so the image is streamed here.
+ */
+export function readCustomAvatar(): { buffer: Buffer; contentType: string } | null {
+  const { file } = getAvatarState();
+  if (!file || !/^chloe-custom-\d+\.[a-z]+$/u.test(file)) return null;
+  try {
+    return { buffer: readFileSync(join(PUBLIC_DIR, file)), contentType: TYPE_BY_EXT[file.split('.').pop() || ''] || 'image/jpeg' };
+  } catch {
+    return null;
+  }
+}

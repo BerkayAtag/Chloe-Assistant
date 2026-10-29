@@ -590,6 +590,7 @@ export default function Sidebar({
             <Settings size={18} className="text-gray-400" />
             <span className="font-medium">Ayarlar</span>
           </button>
+          <p className="px-3 pt-2 text-[11px] text-gray-400 dark:text-gray-500">© 2026 Berkay Atağ · Chloe Assistant</p>
         </div>
       </div>
     </>

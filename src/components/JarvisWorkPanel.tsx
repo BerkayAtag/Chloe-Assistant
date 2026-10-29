@@ -1,6 +1,7 @@
 'use client';
 import type { useJarvisWork } from '@/hooks/useJarvisWork';
 import { officeReport, officeStatusText, type JarvisWorkMode } from '@/lib/jarvis-command';
+import { useNativeMac } from '@/lib/native-bridge';
 
 export default function JarvisWorkPanel({ work, onOpenOffice, onReadReport }: {
   work: ReturnType<typeof useJarvisWork>;
@@ -8,6 +9,8 @@ export default function JarvisWorkPanel({ work, onOpenOffice, onReadReport }: {
   onReadReport: (text: string) => void;
 }) {
   const active = work.run && ['planning', 'running'].includes(work.run.status);
+  // Computer management only runs through the macOS app; elsewhere the mode could only fail.
+  const nativeMac = useNativeMac();
   const download = () => {
     if (!work.run) return;
     const url = URL.createObjectURL(new Blob([officeReport(work.run), work.checkResult ? `\n## Yerel kontrol sonucu\n\n${work.checkResult}\n` : ''], { type: 'text/markdown;charset=utf-8' }));
@@ -18,7 +21,7 @@ export default function JarvisWorkPanel({ work, onOpenOffice, onReadReport }: {
     <summary>İş alanı · Kodlama, ekip, yönetim ve rapor {active ? '· Ekip çalışıyor' : ''}</summary>
     <div className="jarvis-work-body custom-scrollbar">
       <div className="flex flex-wrap gap-2" role="group" aria-label="JARVIS görev modu">
-        {([['auto', 'Otomatik'], ['team', 'Ajan ekibi'], ['browser', 'Tarayıcı'], ['computer', 'Bilgisayar'], ['report', 'Rapor']] as [JarvisWorkMode, string][]).map(([mode, label]) =>
+        {([['auto', 'Otomatik'], ['team', 'Ajan ekibi'], ['browser', 'Tarayıcı'], ...(nativeMac ? [['computer', 'Bilgisayar']] : []), ['report', 'Rapor']] as [JarvisWorkMode, string][]).map(([mode, label]) =>
           <button key={mode} type="button" aria-pressed={work.mode === mode} onClick={() => work.setMode(mode)} className={work.mode === mode ? 'is-active' : ''}>{label}</button>)}
       </div>
       <p>Seçimin sesli ve yazılı isteklerine uygulanır. “hello.js dosyasını düzenle” işini hazırladıktan sonra “Ekibi başlat”, “Ekibin durumu ne?” veya “Raporu oku” diyebilirsin. Dosyaya yazma ayrı, görsel onay ister.</p>

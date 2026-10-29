@@ -20,7 +20,8 @@ const connection = (settings: Settings) => Object.fromEntries(CONNECTION_FIELDS.
 async function requestVault(action: 'migrate' | 'save', patch: Partial<Settings>) {
   const response = await fetch('/api/settings', { method: 'POST', headers, cache: 'no-store',
     signal: AbortSignal.timeout(10_000), body: JSON.stringify({ action, patch, revision }) });
-  const value = await response.json();
+  // A crashed route returns an HTML/text error page; surface the status, not a JSON parse error.
+  const value = await response.json().catch(() => ({ error: `Yerel Chloe sunucusu yanıt veremedi (HTTP ${response.status}). Uygulamayı yeniden başlat.` }));
   if (!response.ok) throw new Error(value.error || 'Bağlantılar kaydedilemedi.');
   return value as { revision: number; connection: Partial<Settings>; recovered: boolean };
 }
@@ -32,7 +33,7 @@ async function bootstrap() {
     const settings = { ...snapshot.settings, ...value.connection, ...pending };
     saveSettings(settings, true);
     emit({ settings, ready: true, storage: { state: 'saved', message: value.recovered
-      ? 'Bağlantılar şifreli yedekten kurtarıldı.' : 'Şifreli kasada kayıtlı · Web ve macOS ortak' } });
+      ? 'Bağlantılar şifreli yedekten kurtarıldı.' : 'Şifreli kasada kayıtlı · Web ve masaüstü ortak' } });
     if (Object.keys(pending).length) void flushSettings();
   } catch (error) {
     emit({ ready: true, storage: { state: 'error', message: error instanceof Error ? error.message : 'Kasa açılamadı. Eski kayıtlar korunuyor.' } });
@@ -53,7 +54,7 @@ export async function flushSettings(): Promise<boolean> {
       revision = value.revision;
       const settings = { ...snapshot.settings, ...value.connection, ...pending };
       saveSettings(settings, true);
-      emit({ settings, storage: { state: 'saved', message: 'Şifreli kasada kayıtlı · Web ve macOS ortak' } });
+      emit({ settings, storage: { state: 'saved', message: 'Şifreli kasada kayıtlı · Web ve masaüstü ortak' } });
       return true;
     } catch (error) {
       pending = { ...patch, ...pending };

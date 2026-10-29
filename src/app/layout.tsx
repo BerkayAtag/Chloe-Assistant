@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   applicationName: "Chloe Assistant",
   title: "Chloe Assistant — Personal AI Workspace",
   description:
-    "A personal AI workspace for voice, research, creative work, and project development on macOS and the web.",
+    "A personal AI workspace for voice, research, creative work, and project development on Windows, macOS and the web.",
 };
 
 // İlk boyamadan önce temayı ayarla (FOUC önler)

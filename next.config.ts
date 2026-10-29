@@ -8,6 +8,8 @@ const nextConfig: NextConfig = {
     output: 'standalone' as const,
     // cwd-relative data paths make the tracer copy the whole checkout; ship code only.
     outputFileTracingExcludes: { '/*': ['.git/**', 'data/**', 'macos/**', 'docs/**', 'script/**', 'windows/**', 'dist/**'] },
+    // Route handlers load this runtime by name at request time, which the tracer misses.
+    outputFileTracingIncludes: { '/*': ['node_modules/next/dist/compiled/next-server/app-route-turbo*.runtime.prod.js'] },
   } : {}),
   cacheComponents: true,
   serverExternalPackages: ['pdf-parse', 'pdfjs-dist'],

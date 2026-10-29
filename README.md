@@ -10,12 +10,12 @@
 [![TypeScript 5](https://img.shields.io/badge/TypeScript-5.0-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22C55E?style=for-the-badge)](LICENSE)
 [![Local-First](https://img.shields.io/badge/Security-Local--First%20%26%20Encrypted-10B981?style=for-the-badge&logo=shield&logoColor=white)](#guvenlik)
-[![Release v0.2.8](https://img.shields.io/badge/Release-v0.2.8-8B5CF6?style=for-the-badge&logo=github)](https://github.com/BerkayAtag/Chloe-Assistant/releases/tag/v0.2.8)
+[![Release v0.2.9](https://img.shields.io/badge/Release-v0.2.9-8B5CF6?style=for-the-badge&logo=github)](https://github.com/BerkayAtag/Chloe-Assistant/releases/tag/v0.2.9)
 
 <br/>
 
 **[🌐 Tanıtım sayfası](https://berkayatag.github.io/Chloe-Assistant/)** ·
-**[📦 İndir (v0.2.8 · Windows setup + macOS)](https://github.com/BerkayAtag/Chloe-Assistant/releases/tag/v0.2.8)** ·
+**[📦 İndir (v0.2.9 · Windows setup + macOS)](https://github.com/BerkayAtag/Chloe-Assistant/releases/tag/v0.2.9)** ·
 **[🚀 Hızlı Kurulum](#kurulum)** ·
 **[🎙️ JARVIS & Ses](#jarvis)** ·
 **[👥 Ajan Ofisi](#ajan-ofisi)** ·
@@ -147,7 +147,7 @@ JARVIS modunu açtığınızda hem konuşabilir hem de tüm yönetim ve kodlama 
 <a id="windows"></a>
 ### Windows 10 / 11 (x64)
 
-👉 **[Chloe.Assistant.Setup-0.2.8.exe](https://github.com/BerkayAtag/Chloe-Assistant/releases/download/v0.2.8/Chloe.Assistant.Setup-0.2.8.exe)** dosyasını indirip çalıştırın.
+👉 **[Chloe.Assistant.Setup-0.2.9.exe](https://github.com/BerkayAtag/Chloe-Assistant/releases/download/v0.2.9/Chloe.Assistant.Setup-0.2.9.exe)** dosyasını indirip çalıştırın.
 
 - Kullanıcı başına kurulur (`%LOCALAPPDATA%\Programs\Chloe Assistant`), yönetici izni gerekmez. Node.js ve diğer bileşenler pakete dahildir.
 - **Başlat → Chloe Assistant** yerel sunucuyu `http://127.0.0.1:3004` adresinde başlatır ve uygulamayı kendi Edge uygulama penceresinde açar. Pencere kapanınca sunucu da kapanır.
@@ -161,7 +161,7 @@ JARVIS modunu açtığınızda hem konuşabilir hem de tüm yönetim ve kodlama 
 
 **Gereksinimler:** Node.js v22+, Apple Command Line Tools (`xcode-select --install`).
 
-👉 **[Chloe-Assistant-0.2.8-macOS.zip](https://github.com/BerkayAtag/Chloe-Assistant/releases/download/v0.2.8/Chloe-Assistant-0.2.8-macOS.zip)** paketini kalıcı bir klasöre çıkarın ve klasör içindeki **`Install Chloe.command`** dosyasını çift tıklayarak çalıştırın. Kurucu bağımlılıkları derler ve uygulamayı `/Applications/Chloe.app` konumuna kurar.
+👉 **[Chloe-Assistant-0.2.9-macOS.zip](https://github.com/BerkayAtag/Chloe-Assistant/releases/download/v0.2.9/Chloe-Assistant-0.2.9-macOS.zip)** paketini kalıcı bir klasöre çıkarın ve klasör içindeki **`Install Chloe.command`** dosyasını çift tıklayarak çalıştırın. Kurucu bağımlılıkları derler ve uygulamayı `/Applications/Chloe.app` konumuna kurar.
 
 Paket **kaynak kod + yerel kurucu** içerir; taşınabilir, Apple notarizasyonlu bir `.app` değildir. Kaynak klasörünü kurulumdan sonra silmeyin/taşımayın. Güncellemeler aynı uygulama yoluna kurulur; önceki sürüm ZIP yedeği olarak korunur, anahtar kasası silinmez.
 
@@ -185,7 +185,7 @@ macOS derlemesi tamamlandığında **Finder → Uygulamalar → Chloe** açılar
 
 ## 🧪 Test & Kalite Güvencesi
 
-29 Ekim (v0.2.8, Windows 11) kontrolü: **246 birim/regresyon testinden 245'i geçti** (kalan 1 test canlı internet gerektirir ve ağsız ortamda çalıştırılamadı) + **117 izole API kontrolü** (Jarvis 15, anahtar/ses 28, Codex 15, Ofis 42, Atölye 17) hem `next start` hem de Windows kurulum paketindeki sunucuyla geçti. Lint, TypeScript ve üretim derlemesi temiz. Kurulum → açılış → pencere kapanınca sunucunun durması → kaldırma akışı test edildi. Canlı model yanıtı deterministik değildir; eksik veya kesilmiş çıktı başarı sayılmaz.
+29 Ekim (v0.2.9, Windows 11) kontrolü: **246 birim/regresyon testinden 245'i geçti** (kalan 1 test canlı internet gerektirir ve ağsız ortamda çalıştırılamadı) + **117 izole API kontrolü** (Jarvis 15, anahtar/ses 28, Codex 15, Ofis 42, Atölye 17) hem `next start` hem de Windows kurulum paketindeki sunucuyla geçti. Lint, TypeScript ve üretim derlemesi temiz. Kurulum → açılış → pencere kapanınca sunucunun durması → kaldırma akışı test edildi. Canlı model yanıtı deterministik değildir; eksik veya kesilmiş çıktı başarı sayılmaz.
 
 ```bash
 # Çekirdek testler (Runtime, Voice UI, JARVIS, Bağlantılar, Skills, Codex, Workbench)

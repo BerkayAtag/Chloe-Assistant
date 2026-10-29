@@ -36,6 +36,8 @@ export default function Avatar({
             alt={assistantName}
             className="w-full h-full object-cover"
             draggable={false}
+            // A missing custom avatar must not leave an empty circle.
+            onError={(event) => { if (!event.currentTarget.src.endsWith('/chloe-portrait.jpg')) event.currentTarget.src = '/chloe-portrait.jpg'; }}
           />
         </div>
       </div>
