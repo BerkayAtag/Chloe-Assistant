@@ -32,6 +32,7 @@ Copy-Tree public "$stage\app\public"
 # Geliştirme makinesindeki kişisel veriler hiçbir zaman pakete girmez.
 foreach ($private in 'data', '.env', '.env.local') { if (Test-Path "$stage\app\$private") { Remove-Item "$stage\app\$private" -Recurse -Force } }
 Copy-Item $node "$stage\runtime\chloe-node.exe"
+Copy-Item LICENSE "$stage\LICENSE.txt"
 Copy-Item THIRD_PARTY_NOTICES.md "$stage\THIRD_PARTY_NOTICES.md"
 Copy-Item licenses "$stage\licenses" -Recurse
 Set-Content "$stage\runtime\NODE-LICENSE.txt" -Encoding utf8 -Value "Node.js $(& $node -v) - MIT License - https://github.com/nodejs/node/blob/main/LICENSE"

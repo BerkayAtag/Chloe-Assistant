@@ -8,6 +8,7 @@
 [![macOS 15+](https://img.shields.io/badge/macOS-15%2B%20Sequoia-black?style=for-the-badge&logo=apple&logoColor=white)](#macos)
 [![Next.js 16](https://img.shields.io/badge/Next.js-16.4-black?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org)
 [![TypeScript 5](https://img.shields.io/badge/TypeScript-5.0-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-22C55E?style=for-the-badge)](LICENSE)
 [![Local-First](https://img.shields.io/badge/Security-Local--First%20%26%20Encrypted-10B981?style=for-the-badge&logo=shield&logoColor=white)](#guvenlik)
 [![Release v0.2.8](https://img.shields.io/badge/Release-v0.2.8-8B5CF6?style=for-the-badge&logo=github)](https://github.com/BerkayAtag/Chloe-Assistant/releases/tag/v0.2.8)
 
@@ -237,6 +238,8 @@ Doğrulama geçmişi ve bilinen sınırlar: [Release History](RELEASE-HISTORY.md
 <div align="center">
 
 **Chloe Assistant** · Geleceğin kişisel yapay zekâ asistanı deneyimi.
+
+[MIT Lisansı](LICENSE) · © 2026 Berkay Atağ · Üçüncü taraf bileşenler: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 
 [Yukarı çık ↑](#-chloe-assistant)
 
