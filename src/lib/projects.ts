@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { dataDirectory } from './data-dir';
+import { dataDirectory } from './data-dir.ts';
 
 const DATA_DIR = dataDirectory();
 const PROJECTS_FILE = join(DATA_DIR, 'projects.json');

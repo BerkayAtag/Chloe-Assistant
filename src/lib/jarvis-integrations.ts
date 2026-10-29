@@ -7,7 +7,7 @@ import {
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { oauthTokenFile, oauthTokenKey, providerSetup, type IntegrationProvider } from './oauth-setup';
-import { dataDirectory } from './data-dir';
+import { dataDirectory } from './data-dir.ts';
 
 export { providerSetup };
 export type { IntegrationProvider };

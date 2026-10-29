@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { dataDirectory } from './data-dir';
+import { dataDirectory } from './data-dir.ts';
 
 export interface MemoryRecord {
   id: string; kind: 'fact' | 'experience' | 'reflection'; title: string; text: string;

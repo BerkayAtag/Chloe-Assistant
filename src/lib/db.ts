@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'fs';
 import { randomUUID } from 'node:crypto';
 import { join } from 'path';
-import { dataDirectory } from './data-dir';
+import { dataDirectory } from './data-dir.ts';
 
 const DATA_DIR = dataDirectory();
 const CONVERSATIONS_FILE = join(DATA_DIR, 'conversations.json');

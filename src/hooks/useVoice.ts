@@ -723,7 +723,7 @@ export function useVoice({ lang = 'tr-TR', onPartial, settings }: UseVoiceOption
       // Cihaz sesi de madde imi/emoji/tablo okumamalı. Yalnızca kod veya
       // bağlantıdan oluşan yanıtta tam sessizlik yerine kısa bir bilgi verilir.
       const spoken = cleanSpeechText(text) || 'Yanıt ekranda.';
-      const noDeviceVoice = !native && 'speechSynthesis' in window && !deviceVoice(opts?.voiceURI);
+      const noDeviceVoice = settings?.jarvisSpeechEngine === 'device' && !native && 'speechSynthesis' in window && !deviceVoice(opts?.voiceURI);
       if (settings && (settings.jarvisSpeechEngine !== 'device' || noDeviceVoice)) {
         const queue = startCloudSpeech(opts);
         splitSpeechText(spoken).forEach((chunk) => queue?.push(chunk));

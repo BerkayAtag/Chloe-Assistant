@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { DEFAULT_AGENTS, type OfficeAgent, type OfficeRun } from './office-types';
 import { isInstalledSkill } from './skills';
 import { defaultSkillIds } from './builtin-skills';
-import { dataDirectory } from './data-dir';
+import { dataDirectory } from './data-dir.ts';
 
 export const officeDirectory = process.env.CHLOE_OFFICE_DIR || dataDirectory('office');
 const root = officeDirectory;

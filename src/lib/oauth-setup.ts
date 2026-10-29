@@ -2,7 +2,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import { dataDirectory } from './data-dir';
+import { dataDirectory } from './data-dir.ts';
 
 export type IntegrationProvider = 'google' | 'microsoft';
 

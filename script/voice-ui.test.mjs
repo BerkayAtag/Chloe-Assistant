@@ -405,6 +405,46 @@ test('device speech announces preparation, speaking, and completion in order', (
   assert.equal(completed, 1);
 });
 
+test('streamed device speech starts with the first sentence and ends after the last', () => {
+  const states = [], utterances = [];
+  const React = {
+    useState(value) { const index = states.length; states.push(typeof value === 'function' ? value() : value); return [states[index], (next) => { states[index] = next; }]; },
+    useRef: (value) => ({ current: value }),
+    useEffect() {},
+    useCallback: (fn) => fn,
+  };
+  class Utterance { constructor(text) { this.text = text; } }
+  const voices = [{ voiceURI: 'legacy', name: 'Microsoft Tolga', lang: 'tr-TR' }, { voiceURI: 'natural', name: 'Microsoft Emel Online (Natural) - Turkish (Turkey)', lang: 'tr-TR' }];
+  const window = {
+    speechSynthesis: { getVoices: () => voices, cancel() {}, speak: (utterance) => utterances.push(utterance) },
+    setTimeout, clearTimeout,
+  };
+  const voice = load('../src/hooks/useVoice.ts', {
+    react: React,
+    '@/lib/settings': { settingsForRequest: (settings) => settings },
+    '@/lib/speech-text': speechText, '@/lib/speech-queue': speechQueue, '@/lib/barge-in': bargeIn, '@/lib/audio-cues': audioCues,
+  }, { window, SpeechSynthesisUtterance: Utterance, AbortController, AbortSignal, URL: { revokeObjectURL() {} } }).useVoice({
+    settings: { jarvisSpeechEngine: 'device' },
+  });
+
+  let started = 0, completed = 0;
+  const stream = voice.beginSpeechStream({ onStart: () => started++, onEnd: () => completed++ });
+  stream.push('Türkiye’nin başkenti Ankara’dır. İlginç bir bilgi ');
+  assert.equal(utterances.length, 1, 'the first finished sentence is spoken before the reply ends');
+  assert.match(utterances[0].voice.name, /Natural/, 'Edge neural voices are preferred');
+  utterances[0].onstart();
+  assert.equal(started, 1);
+  stream.push('daha var.');
+  stream.finish();
+  assert.equal(utterances.length, 2);
+  utterances[0].onend();
+  assert.equal(completed, 0, 'the turn is not over while a sentence is queued');
+  utterances[1].onstart(); utterances[1].onend();
+  assert.equal(completed, 1);
+  assert.equal(states[2], false);
+  assert.equal(states[3], false);
+});
+
 test('device speech failure ends the turn exactly once', () => {
   const states = [], utterances = [];
   const React = {

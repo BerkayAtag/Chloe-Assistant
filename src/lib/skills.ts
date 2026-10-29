@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { BUILTIN_SKILLS } from './builtin-skills.ts';
-import { dataDirectory } from './data-dir';
+import { dataDirectory } from './data-dir.ts';
 
 export type SkillCatalogSource = 'ai-skills' | 'ai-hero' | 'standard';
 export type SkillSummary = {

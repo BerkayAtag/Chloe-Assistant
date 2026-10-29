@@ -8,7 +8,7 @@ import {
 } from 'fs';
 import { join } from 'path';
 import { downloadImage, searchImages } from './search';
-import { dataDirectory } from './data-dir';
+import { dataDirectory } from './data-dir.ts';
 
 const DATA_DIR = dataDirectory();
 const STATE_FILE = join(DATA_DIR, 'avatar.json');
