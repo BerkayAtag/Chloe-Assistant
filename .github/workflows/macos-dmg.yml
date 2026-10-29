@@ -1,0 +1,47 @@
+name: macOS DMG
+
+# Builds the drag-to-install Chloe.app DMG on Apple Silicon. Run it from the
+# Actions tab (optionally with a release tag to attach the DMG to that release).
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to upload the DMG to (leave empty to only build)
+        required: false
+        default: ''
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: bash script/build-macos-dmg.sh
+      - name: Launch the installed app and wait for its bundled server
+        run: |
+          ditto dist/macos/Chloe.app "$RUNNER_TEMP/Chloe.app"
+          open "$RUNNER_TEMP/Chloe.app"
+          for i in $(seq 1 60); do curl -fsS -o /dev/null http://127.0.0.1:3004/ && break; sleep 1; done
+          curl -fsS http://127.0.0.1:3004/ | grep -q Chloe
+          ls "$HOME/Library/Application Support/Chloe/data"
+          osascript -e 'quit app "Chloe"' || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chloe-macos-dmg
+          path: dist/macos/*.dmg*
+      - name: Attach to release
+        if: github.event_name == 'push' || inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: gh release upload "$TAG" dist/macos/*.dmg dist/macos/*.dmg.sha256 --clobber --repo "$GITHUB_REPOSITORY"

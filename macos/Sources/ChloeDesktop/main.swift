@@ -57,6 +57,7 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
     private var speechLastActivity: TimeInterval = 0
     private var speechSessionTimer: Timer?
     private var webServerProcess: Process?
+    private var serverIsBundled = false
     private var serverProbeInProgress = false
     private var startupRetries = 0
     private let voiceSynthesizer = AVSpeechSynthesizer()
@@ -89,8 +90,9 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
         codeCommand?.cancel()
         stopDictation(notifyWebView: false)
         voiceSynthesizer.stopSpeaking(at: .immediate)
-        // The same local server also serves the web app; quitting the desktop
-        // must not break an open browser session.
+        // A source install shares its server with browser sessions, so it keeps
+        // running. The DMG app owns the server it started inside its bundle.
+        if serverIsBundled { webServerProcess?.terminate() }
     }
 
     private func buildMenu() {
@@ -135,6 +137,16 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
     }
 
     private func launchLocalServer() {
+        // The DMG build carries its own Node and standalone server in Resources.
+        if let resources = Bundle.main.resourceURL {
+            let server = resources.appendingPathComponent("server", isDirectory: true)
+            let node = resources.appendingPathComponent("runtime/node")
+            if FileManager.default.fileExists(atPath: server.appendingPathComponent("server.js").path),
+               FileManager.default.isExecutableFile(atPath: node.path) {
+                launchBundledServer(server: server, node: node)
+                return
+            }
+        }
         // SwiftPM GUI launches do not always report the enclosing .app as
         // Bundle.main. Resolve from the actual executable as a fallback.
         var project = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent()
@@ -174,6 +186,39 @@ final class ChloeDesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelega
         process.standardOutput = output
         process.standardError = output
         do { try process.run(); webServerProcess = process } catch { NSLog("Chloe server startup: %@", error.localizedDescription) }
+    }
+
+    /// The app bundle is read-only once installed, so user data lives in
+    /// Application Support and the server log in ~/Library/Logs/Chloe.
+    private func launchBundledServer(server: URL, node: URL) {
+        let files = FileManager.default
+        let support = files.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Chloe", isDirectory: true)
+        let data = support.appendingPathComponent("data", isDirectory: true)
+        let logs = files.urls(for: .libraryDirectory, in: .userDomainMask)[0].appendingPathComponent("Logs/Chloe", isDirectory: true)
+        try? files.createDirectory(at: data, withIntermediateDirectories: true)
+        try? files.createDirectory(at: logs, withIntermediateDirectories: true)
+        let logPath = logs.appendingPathComponent("server.log").path
+        files.createFile(atPath: logPath, contents: nil)
+        let output = FileHandle(forWritingAtPath: logPath) ?? FileHandle.nullDevice
+        let process = Process()
+        process.executableURL = node
+        process.arguments = [server.appendingPathComponent("server.js").path]
+        process.currentDirectoryURL = server
+        var environment = ProcessInfo.processInfo.environment
+        environment["PORT"] = "3004"
+        environment["HOSTNAME"] = "127.0.0.1"
+        environment["NODE_ENV"] = "production"
+        environment["NEXT_TELEMETRY_DISABLED"] = "1"
+        environment["CHLOE_DATA_DIR"] = data.path
+        process.environment = environment
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = output
+        process.standardError = output
+        do {
+            try process.run()
+            webServerProcess = process
+            serverIsBundled = true
+        } catch { NSLog("Chloe bundled server startup: %@", error.localizedDescription) }
     }
 
     private func buildWindow() {

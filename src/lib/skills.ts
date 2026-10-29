@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { BUILTIN_SKILLS } from './builtin-skills.ts';
+import { dataDirectory } from './data-dir';
 
 export type SkillCatalogSource = 'ai-skills' | 'ai-hero' | 'standard';
 export type SkillSummary = {
@@ -17,7 +18,7 @@ export type SkillSummary = {
 };
 export type InstalledSkill = SkillSummary & { installedAt: string };
 
-const root = path.join(process.cwd(), 'data', 'skills');
+const root = dataDirectory('skills');
 const indexPath = path.join(root, 'installed.json');
 const MAX_SKILL_BYTES = 96_000;
 const MAX_CATALOG_BYTES = 2_000_000;

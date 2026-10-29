@@ -1,7 +1,8 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'fs';
 import { join } from 'path';
+import { dataDirectory } from './data-dir';
 
-const DATA_DIR = join(process.cwd(), 'data');
+const DATA_DIR = dataDirectory();
 const KNOWLEDGE_FILE = join(DATA_DIR, 'expertise.json');
 
 export interface ExpertiseTopic {

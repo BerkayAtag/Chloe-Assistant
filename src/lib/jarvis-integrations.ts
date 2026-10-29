@@ -5,8 +5,9 @@ import {
   timingSafeEqual,
 } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 import { oauthTokenFile, oauthTokenKey, providerSetup, type IntegrationProvider } from './oauth-setup';
+import { dataDirectory } from './data-dir';
 
 export { providerSetup };
 export type { IntegrationProvider };
@@ -74,7 +75,7 @@ function decrypt(value: EncryptedToken): OAuthTokenSet {
 }
 
 function readStore(): IntegrationStore {
-  const DATA_FILE = existsSync(oauthTokenFile()) ? oauthTokenFile() : join(process.cwd(), 'data', 'jarvis-integrations.json');
+  const DATA_FILE = existsSync(oauthTokenFile()) ? oauthTokenFile() : dataDirectory('jarvis-integrations.json');
   if (!existsSync(DATA_FILE)) return {};
   const data: unknown = JSON.parse(readFileSync(DATA_FILE, 'utf8'));
   if (!data || typeof data !== 'object' || Array.isArray(data)) {

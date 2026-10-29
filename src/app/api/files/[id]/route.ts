@@ -1,11 +1,12 @@
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
+import { dataDirectory } from '@/lib/data-dir';
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!/^[a-f0-9-]{36}$/i.test(id)) return new Response('Geçersiz dosya.', { status: 400 });
   try {
-    const dir = path.join(process.cwd(), 'data', 'uploads');
+    const dir = dataDirectory('uploads');
     const name = (await readdir(dir)).find((item) => item.startsWith(id + '-'));
     if (!name) return new Response('Dosya bulunamadı.', { status: 404 });
     const ext = path.extname(name).toLowerCase();

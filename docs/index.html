@@ -10,7 +10,7 @@
 <meta property="og:image" content="https://berkayatag.github.io/Chloe-Assistant/screens/jarvis-light.jpg">
 <title>Chloe Assistant — Kişisel yapay zekâ çalışma alanı</title>
 <link rel="icon" type="image/png" href="assets/favicon.png">
-<link rel="stylesheet" href="site.css?v=0.2.9">
+<link rel="stylesheet" href="site.css?v=0.3.0">
 <script>
   // Varsayılan aydınlık tema; ziyaretçinin seçimi bu tarayıcıda hatırlanır.
   // Sayfa boyanmadan önce uygulanır, böylece tema geçişinde yanıp sönme olmaz.
@@ -41,12 +41,12 @@
 <main id="main">
   <section class="hero">
     <div class="hero-copy">
-      <p class="eyebrow">Sürüm 0.2.9 · Windows &amp; macOS</p>
+      <p class="eyebrow">Sürüm 0.3.0 · Windows &amp; macOS</p>
       <h1>Kişisel yapay zekâ<br><em>çalışma alanın.</em></h1>
       <p class="lead">Chloe; sesli JARVIS asistanını, birlikte çalışan bir ajan ekibini ve yerel kod çalışma alanını tek uygulamada toplar. Seçtiğin model sağlayıcısıyla çalışır, anahtarlarını şifreli kasada tutar ve dosya değişikliği ya da komut çalıştırma için her zaman onayını bekler.</p>
       <div class="actions">
-        <a class="button" href="https://github.com/BerkayAtag/Chloe-Assistant/releases/download/v0.2.9/Chloe.Assistant.Setup-0.2.9.exe">Windows için indir <span aria-hidden="true">↓</span></a>
-        <a class="button ghost" href="#kurulum">macOS kurulumu</a>
+        <a class="button" href="https://github.com/BerkayAtag/Chloe-Assistant/releases/download/v0.3.0/Chloe.Assistant.Setup-0.3.0.exe">Windows için indir <span aria-hidden="true">↓</span></a>
+        <a class="button" href="https://github.com/BerkayAtag/Chloe-Assistant/releases/download/v0.3.0/Chloe-Assistant-0.3.0-macOS-arm64.dmg">macOS için indir <span aria-hidden="true">↓</span></a>
       </div>
       <ul class="facts">
         <li>Yerel öncelikli</li>
@@ -74,7 +74,7 @@
       <article>
         <span class="num">01</span>
         <h3>JARVIS sesli asistan</h3>
-        <p>Mikrofona dokun ve konuş. Yanıtlar cümle cümle seslendirilir; Gemini doğal sesi akış hâlinde çalınır. Sessizlik eşiği, otomatik gönderim ve ayrı ses bağlantısı ayarlanabilir.</p>
+        <p>Boşluk tuşunu basılı tut, konuş, bırak: istek beklemeden gider. Yanıt yazılırken ilk cümleden itibaren cihazın doğal sesiyle okunur; dilersen API sesi de seçilebilir.</p>
       </article>
       <article>
         <span class="num">02</span>
@@ -140,20 +140,20 @@
       <article>
         <h3>Windows <span class="badge">10 / 11 · x64</span></h3>
         <ol>
-          <li><strong>Chloe.Assistant.Setup-0.2.9.exe</strong> dosyasını indir ve çalıştır. Yönetici izni gerekmez.</li>
+          <li><strong>Chloe.Assistant.Setup-0.3.0.exe</strong> dosyasını indir ve çalıştır. Yönetici izni gerekmez.</li>
           <li>Başlat menüsünden <strong>Chloe Assistant</strong>'ı aç. Uygulama kendi penceresinde (Edge uygulama penceresi) açılır.</li>
           <li>Pencereyi kapattığında yerel sunucu da kapanır.</li>
         </ol>
-        <a class="button" href="https://github.com/BerkayAtag/Chloe-Assistant/releases/download/v0.2.9/Chloe.Assistant.Setup-0.2.9.exe">Setup'ı indir <span aria-hidden="true">↓</span></a>
+        <a class="button" href="https://github.com/BerkayAtag/Chloe-Assistant/releases/download/v0.3.0/Chloe.Assistant.Setup-0.3.0.exe">Setup'ı indir <span aria-hidden="true">↓</span></a>
       </article>
       <article>
-        <h3>macOS <span class="badge">15+</span></h3>
+        <h3>macOS <span class="badge">15+ · Apple Silicon</span></h3>
         <ol>
-          <li>Node.js 22+ ve Apple Command Line Tools'u kur (<code>xcode-select --install</code>).</li>
-          <li><strong>macOS ZIP</strong> paketini kalıcı bir klasöre çıkar.</li>
-          <li><strong>Install Chloe.command</strong> dosyasını çift tıkla; uygulama <code>/Applications/Chloe.app</code> olarak kurulur.</li>
+          <li><strong>Chloe-Assistant-0.3.0-macOS-arm64.dmg</strong> dosyasını indir ve aç.</li>
+          <li><strong>Chloe</strong>'yi <strong>Applications</strong> klasörüne sürükle. Node.js veya başka bir kurulum gerekmez.</li>
+          <li>İlk açılışta: Chloe'ye sağ tıkla → <strong>Aç</strong> (uygulama Apple noter onaylı değil).</li>
         </ol>
-        <a class="button ghost" href="https://github.com/BerkayAtag/Chloe-Assistant/releases/download/v0.2.9/Chloe-Assistant-0.2.9-macOS.zip">macOS paketini indir <span aria-hidden="true">↓</span></a>
+        <a class="button" href="https://github.com/BerkayAtag/Chloe-Assistant/releases/download/v0.3.0/Chloe-Assistant-0.3.0-macOS-arm64.dmg">DMG'yi indir <span aria-hidden="true">↓</span></a>
       </article>
       <article>
         <h3>Kaynak koddan</h3>
@@ -180,7 +180,7 @@
       <div><h3>Yalnız yerel erişim</h3><p>Sunucu yalnız <code>127.0.0.1</code> dinler; Origin ve Fetch Metadata kontrolleri başka sitelerin isteklerini reddeder. Bu bir kimlik doğrulama değildir; sunucuyu internete açma.</p></div>
       <div><h3>SSRF koruması</h3><p>Tarayıcı ve araştırma araçları yerel ağ, loopback ve bulut meta veri adreslerine erişemez.</p></div>
       <div><h3>Açık onay</h3><p>Dosya değişikliği, proje komutu ve e-posta gönderimi senin onayın olmadan çalışmaz. Onaylanan komutlar hesabının yetkileriyle çalışır; bir işletim sistemi korumalı alanı değildir.</p></div>
-      <div><h3>Windows sürümü</h3><p>Bilgisayar yönetimi komutları ve macOS sistem sesleri yalnız macOS uygulamasında bulunur. Windows'ta konuşma tanıma ve seslendirme Edge'in yerleşik hizmetlerini veya seçtiğin ses API'sini kullanır.</p></div>
+      <div><h3>Windows sürümü</h3><p>Bilgisayar yönetimi komutları ve macOS sistem sesleri yalnız macOS uygulamasında bulunur. Windows'ta konuşma tanıma ve seslendirme Edge'in doğal seslerini kullanır; Türkçe cihaz sesi yoksa seçtiğin ses API'sine geçilir.</p></div>
       <div><h3>Dürüst sınırlar</h3><p>Canlı model yanıtları deterministik değildir ve sağlayıcı kotası ya da gecikmesi Chloe'nin denetiminde değildir. Sıfır hata veya sıfır güvenlik açığı garantisi verilmez.</p></div>
     </div>
   </section>

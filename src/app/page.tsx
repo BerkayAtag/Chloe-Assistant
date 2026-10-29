@@ -386,7 +386,11 @@ export default function Home() {
         const events = new JarvisEventDecoder();
         let streamFinished = false;
         if (jarvisRequest && speakEnabled) {
+          const tone = settings.jarvisVoiceTone;
           speechStream = voice.beginSpeechStream({
+            voiceURI: settings.jarvisVoiceURI,
+            rate: tone === 'warm' ? 0.96 : tone === 'calm' ? 0.92 : 1,
+            pitch: tone === 'warm' ? 1.03 : tone === 'calm' ? 0.98 : 1,
             onStart: () => setJarvisTiming((previous) => ({ ...previous, audioStartMs: Math.round(performance.now() - turnStarted) })),
             onEnd: () => setResumeJarvisListening(true),
             onBargeIn: () => bargeInRef.current(),

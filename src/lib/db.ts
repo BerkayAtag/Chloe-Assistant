@@ -1,8 +1,9 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'fs';
 import { randomUUID } from 'node:crypto';
 import { join } from 'path';
+import { dataDirectory } from './data-dir';
 
-const DATA_DIR = join(process.cwd(), 'data');
+const DATA_DIR = dataDirectory();
 const CONVERSATIONS_FILE = join(DATA_DIR, 'conversations.json');
 
 function ensureDataDir() {

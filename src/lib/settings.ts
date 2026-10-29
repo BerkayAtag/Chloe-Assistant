@@ -126,7 +126,8 @@ export const DEFAULT_SETTINGS: Settings = {
   selectedCustomProviderId: '',
   jarvisMode: false,
   jarvisFastMode: true,
-  jarvisSilenceMs: 2500,
+  // Fluent turns by default; Space push-to-talk sends without waiting at all.
+  jarvisSilenceMs: 1200,
   jarvisAutoSend: true,
   jarvisProvider: 'inherit',
   jarvisApiKey: '',
@@ -134,7 +135,9 @@ export const DEFAULT_SETTINGS: Settings = {
   jarvisApiBaseUrl: '',
   jarvisVoiceURI: '',
   jarvisVoiceTone: 'natural',
-  jarvisSpeechEngine: 'main',
+  // The device voice (Edge neural voices on Windows, the system voice on macOS)
+  // starts in well under a second; cloud speech took ~4 s per sentence.
+  jarvisSpeechEngine: 'device',
   jarvisCloudVoice: 'Kore',
   jarvisSpeechProvider: 'inherit',
   jarvisSpeechApiKey: '',
@@ -334,7 +337,9 @@ export function loadSettings(): Settings {
     merged.jarvisVoiceURI =
       typeof parsed.jarvisVoiceURI === 'string' ? parsed.jarvisVoiceURI : '';
     // Old Gemini-only speech now inherits the explicitly selected main API.
-    merged.jarvisSpeechEngine = parsed.jarvisSpeechEngine === 'device' ? 'device' : 'main';
+    // Any saved cloud choice (incl. legacy 'gemini') stays cloud; only new installs get the device voice.
+    merged.jarvisSpeechEngine = parsed.jarvisSpeechEngine === 'device' ? 'device'
+      : typeof parsed.jarvisSpeechEngine === 'string' ? 'main' : DEFAULT_SETTINGS.jarvisSpeechEngine;
     merged.builtinConnections = {};
     merged.savedApiKeys = Array.isArray(parsed.savedApiKeys) ? parsed.savedApiKeys.filter((key: SavedApiKey) =>
       key && typeof key.id === 'string' && typeof key.name === 'string' && typeof key.apiKey === 'string' &&

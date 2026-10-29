@@ -132,7 +132,9 @@ export async function executeOfficeRun(run: OfficeRun, base: Settings, useWeb: b
         return result?.toolName === 'proposeFile' && !!output && typeof output === 'object' &&
           'proposed' in output && output.proposed === true && 'path' in output && output.path === focus?.path;
       }))],
-      maxOutputTokens: thinkingOutputTokenLimit(settings, structured ? 4096 : 3000), maxRetries: 0,
+      // Routers such as FreeLLMAPI 'auto' may pick reasoning models whose hidden
+      // reasoning counts against this budget; 3k cut ordinary reports short.
+      maxOutputTokens: thinkingOutputTokenLimit(settings, 8192), maxRetries: 0,
       abortSignal: AbortSignal.any([signal, AbortSignal.timeout(90_000)]),
       providerOptions: thinkingOptions(settings),
     });

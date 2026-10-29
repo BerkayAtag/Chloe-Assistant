@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { dataDirectory } from './data-dir';
 
 export type IntegrationProvider = 'google' | 'microsoft';
 
@@ -31,7 +32,7 @@ export function oauthTokenKey() {
     if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded) || Buffer.from(encoded, 'base64').length !== 32) throw new Error('JARVIS_TOKEN_ENCRYPTION_KEY (32 bayt Base64 anahtar gerekli)');
     return Buffer.from(encoded, 'base64');
   }
-  const legacy = path.join(process.cwd(), 'data/jarvis-integrations.json');
+  const legacy = dataDirectory('jarvis-integrations.json');
   if (!existsSync(oauthTokenFile()) && existsSync(legacy) && Object.keys(JSON.parse(readFileSync(legacy, 'utf8'))).length) {
     throw new Error('Eski bağlı hesapları korumak için JARVIS_TOKEN_ENCRYPTION_KEY yeniden tanımlanmalı.');
   }

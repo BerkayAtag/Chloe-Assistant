@@ -57,6 +57,12 @@ export default function SettingsModal({
   } | null>(null);
   const [loadingHealth, setLoadingHealth] = useState(false);
   const testController = useRef<AbortController | null>(null);
+  const apiKeyInput = useRef<HTMLInputElement>(null);
+  // The key field commits on blur; tests and model lists must still use a key typed a moment ago.
+  const requestSettings = () => {
+    const typed = apiKeyInput.current?.value.trim();
+    return settingsForRequest(settings, typed !== undefined && typed !== settings.apiKey ? { apiKey: typed } : {});
+  };
   useEffect(() => () => testController.current?.abort(), []);
   const [closing, setClosing] = useState(false);
   const closeRef = useRef<() => void>(() => {});
@@ -126,7 +132,7 @@ export default function SettingsModal({
     setLoadingModels(true); setModelListError(null);
     try {
       const response = await fetch('/api/providers/models', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings: settingsForRequest(settings) }), signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });
+        body: JSON.stringify({ settings: requestSettings() }), signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });
       const data = await response.json(); if (controller.signal.aborted) return;
       if (!response.ok) throw new Error(data.error || 'Model listesi alınamadı.');
       setCloudModels(data.models);
@@ -142,7 +148,7 @@ export default function SettingsModal({
     setLoadingHealth(true); setHealth(null); setModelListError(null);
     try {
       const response = await fetch('/api/providers/health', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings: settingsForRequest(settings) }), signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]) });
+        body: JSON.stringify({ settings: requestSettings() }), signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]) });
       const data = await response.json(); if (controller.signal.aborted) return;
       if (!response.ok) throw new Error(data.error || 'Sağlık durumu alınamadı.');
       setHealth(data);
@@ -291,7 +297,7 @@ export default function SettingsModal({
         headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.any([controller.signal, AbortSignal.timeout(25000)]),
         body: JSON.stringify({
-          settings: settingsForRequest(settings),
+          settings: requestSettings(),
         }),
       });
       const data = await response.json();
@@ -531,6 +537,7 @@ export default function SettingsModal({
                   <input
                     key={`${settings.cloudProvider}:${settings.apiBaseUrl}:${settings.apiKey}`}
                     id="provider-api-key"
+                    ref={apiKeyInput}
                     type={showKey ? 'text' : 'password'}
                     defaultValue={settings.apiKey}
                     onBlur={(e) => { if (e.target.value !== settings.apiKey) set({ apiKey: e.target.value.trim() }); }}

@@ -8,6 +8,7 @@ import { DEFAULT_SETTINGS, hasExplicitConnection, type Settings } from '@/lib/se
 import { mediaConnection, MediaConfigurationError, providerFailure, readLimitedBytes } from '@/lib/media-provider';
 import { readPublicImage } from '@/lib/public-page';
 import { localRequestAllowed } from '@/lib/request-origin';
+import { dataDirectory } from '@/lib/data-dir';
 
 export const maxDuration = 300;
 
@@ -44,7 +45,7 @@ async function saveOutput(
   mimeType: string
 ) {
   const id = randomUUID();
-  const dir = path.join(process.cwd(), 'data', 'uploads');
+  const dir = dataDirectory('uploads');
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, `${id}-generated.${extension}`), bytes);
   return { id, url: `/api/files/${id}`, mimeType };

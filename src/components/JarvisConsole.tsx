@@ -1,7 +1,7 @@
 'use client';
 import EmailConnect from '@/components/EmailConnect';
 
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import {
   AudioLines,
   CalendarDays,
@@ -143,6 +143,35 @@ export default function JarvisConsole({
 }: JarvisConsoleProps) {
   const [panel, setPanel] = useState<'voice' | 'integrations' | 'mail' | 'calendar'>('voice');
   const [focusMode, setFocusMode] = useState(false);
+  // Push-to-talk (as in Jarvis): hold Space to talk, release to send at once,
+  // so the turn never waits for the silence timer.
+  const talk = useRef({ held: false, finishWhenReady: false, isListening, isStarting, onToggleMic, onFinishListening });
+  useEffect(() => { Object.assign(talk.current, { isListening, isStarting, onToggleMic, onFinishListening }); });
+  useEffect(() => {
+    if (isListening && talk.current.finishWhenReady) { talk.current.finishWhenReady = false; onFinishListening(); }
+  }, [isListening, onFinishListening]);
+  useEffect(() => {
+    const typing = (target: EventTarget | null) => target instanceof HTMLElement
+      && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(target.tagName));
+    const down = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' || event.repeat || typing(event.target)) return;
+      event.preventDefault();
+      const state = talk.current;
+      if (state.held) return;
+      state.held = true; state.finishWhenReady = false;
+      if (!state.isListening && !state.isStarting) state.onToggleMic();
+    };
+    const up = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' || !talk.current.held) return;
+      event.preventDefault();
+      const state = talk.current;
+      state.held = false;
+      if (state.isListening) state.onFinishListening(); else state.finishWhenReady = true;
+    };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
+  }, []);
   const [showJarvisSettings, setShowJarvisSettings] = useState(false);
   const cloudVoice = settings.jarvisSpeechEngine !== 'device';
   const speechResolution = jarvisSpeechSettings(settings);
@@ -517,7 +546,7 @@ export default function JarvisConsole({
               className={`rounded-full border px-3 py-1.5 text-xs ${handsFree ? 'border-app-accent bg-app-accent-soft text-app-accent' : 'border-app-border text-app-muted'}`}>
               {handsFree ? 'Sürekli dinleme açık' : 'Sürekli dinlemeyi aç'}
             </button>
-            <span className="text-[11px] text-app-muted">Ses AI tarafından üretilir</span>
+            <span className="text-[11px] text-app-muted">Bas-konuş: <kbd className="rounded border border-app-border px-1">Boşluk</kbd> tuşunu basılı tut, bırakınca gönderilir · Ses AI tarafından üretilir</span>
           </div>
           {!focusMode && (
             <div className="flex flex-wrap items-center justify-center gap-3">

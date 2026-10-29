@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import path from 'node:path';
 import { NextResponse } from 'next/server';
 import { readZipEntry } from '@/lib/zip-entry';
+import { dataDirectory } from '@/lib/data-dir';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/jpeg', 'image/png', 'image/webp', 'image/gif']);
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
     if (item.size > MAX_FILE_SIZE) return NextResponse.json({ error: 'Dosya boyutu en fazla 50 MB olabilir.' }, { status: 413 });
     const id = randomUUID();
     const safeName = item.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'upload';
-    const dir = path.join(process.cwd(), 'data', 'uploads');
+    const dir = dataDirectory('uploads');
     await mkdir(dir, { recursive: true, mode: 0o700 });
     const storedPath = path.join(dir, id + '-' + safeName);
     await writeFile(storedPath, Buffer.from(await item.arrayBuffer()), { mode: 0o600 });

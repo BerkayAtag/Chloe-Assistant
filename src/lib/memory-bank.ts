@@ -1,12 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { dataDirectory } from './data-dir';
 
 export interface MemoryRecord {
   id: string; kind: 'fact' | 'experience' | 'reflection'; title: string; text: string;
   scope: string; sources: string[]; createdAt: string; archivedAt?: string; replaces?: string;
 }
-const directory = process.env.CHLOE_MEMORY_DIR || path.join(process.cwd(), 'data', 'memory-bank');
+const directory = process.env.CHLOE_MEMORY_DIR || dataDirectory('memory-bank');
 const file = path.join(directory, 'records.json');
 function read(): MemoryRecord[] {
   if (!fs.existsSync(file)) return [];

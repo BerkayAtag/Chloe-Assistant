@@ -8,10 +8,15 @@ import {
 } from 'fs';
 import { join } from 'path';
 import { downloadImage, searchImages } from './search';
+import { dataDirectory } from './data-dir';
 
-const DATA_DIR = join(process.cwd(), 'data');
+const DATA_DIR = dataDirectory();
 const STATE_FILE = join(DATA_DIR, 'avatar.json');
-const PUBLIC_DIR = join(process.cwd(), 'public');
+// Custom avatars live with the user's data (the macOS app bundle is read-only);
+// older installs kept them in public/, which is still read as a fallback.
+const AVATAR_DIR = dataDirectory('avatars');
+const LEGACY_DIR = join(process.cwd(), 'public');
+const avatarPath = (file: string) => existsSync(join(AVATAR_DIR, file)) ? join(AVATAR_DIR, file) : join(LEGACY_DIR, file);
 
 export interface AvatarState {
   /** public/ altındaki özel görsel dosyası (null → varsayılan /chloe-portrait.jpg) */
@@ -69,14 +74,15 @@ export async function updateAvatarFromUrl(url: string): Promise<AvatarState> {
   // Eski özel dosyayı sil
   if (state.file) {
     try {
-      unlinkSync(join(PUBLIC_DIR, state.file));
+      unlinkSync(avatarPath(state.file));
     } catch {
       /* yoksa sorun değil */
     }
   }
 
   const fileName = `chloe-custom-${Date.now()}.${ext}`;
-  writeFileSync(join(PUBLIC_DIR, fileName), buffer);
+  mkdirSync(AVATAR_DIR, { recursive: true });
+  writeFileSync(join(AVATAR_DIR, fileName), buffer);
 
   state.file = fileName;
   state.version = (state.version || 0) + 1;
@@ -112,7 +118,7 @@ export function resetAvatar(): AvatarState {
   const state = ensureState();
   if (state.file) {
     try {
-      unlinkSync(join(PUBLIC_DIR, state.file));
+      unlinkSync(avatarPath(state.file));
     } catch {
       /* yoksa sorun değil */
     }
@@ -129,10 +135,10 @@ export function cleanupOrphanAvatars() {
   try {
     const state = getAvatarState();
     const active = state.file;
-    for (const f of readdirSync(PUBLIC_DIR)) {
+    for (const f of existsSync(AVATAR_DIR) ? readdirSync(AVATAR_DIR) : []) {
       if (f.startsWith('chloe-custom-') && f !== active) {
         try {
-          unlinkSync(join(PUBLIC_DIR, f));
+          unlinkSync(join(AVATAR_DIR, f));
         } catch {
           /* boş */
         }
@@ -153,7 +159,7 @@ export function readCustomAvatar(): { buffer: Buffer; contentType: string } | nu
   const { file } = getAvatarState();
   if (!file || !/^chloe-custom-\d+\.[a-z]+$/u.test(file)) return null;
   try {
-    return { buffer: readFileSync(join(PUBLIC_DIR, file)), contentType: TYPE_BY_EXT[file.split('.').pop() || ''] || 'image/jpeg' };
+    return { buffer: readFileSync(avatarPath(file)), contentType: TYPE_BY_EXT[file.split('.').pop() || ''] || 'image/jpeg' };
   } catch {
     return null;
   }

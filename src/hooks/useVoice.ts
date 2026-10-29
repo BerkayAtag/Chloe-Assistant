@@ -26,6 +26,20 @@ export type FemaleSpeechVoice = {
 };
 
 const FEMALE_VOICE_NAME = /\b(female|woman|girl|kadın|samantha|ava|allison|susan|zoe|victoria|karen|moira|tessa|fiona|veena|zira|jenny|aria|sonia|hazel|eva|heera|sara|katja|helena|yelda|filiz|seda|zeynep|selin|ece|defne|emel|aylin|meltem|burcu|gül|gul|elif|dilara|esra|nil|özge|ozge|ipek|ipek|şebnem|sebnem|leyla|leila|yasemin|merve|ayşe|ayse|gizem|bahar|damla|derya|melisa|nehir|tuğçe|tugce)\b/iu;
+// Edge (the Windows app window) ships neural "Online (Natural)" voices that
+// start almost instantly and sound far better than the legacy SAPI voices.
+const NATURAL_VOICE = /natural|online|neural|premium|enhanced/iu;
+const naturalFirst = (a: { name: string }, b: { name: string }) =>
+  Number(NATURAL_VOICE.test(b.name)) - Number(NATURAL_VOICE.test(a.name)) || a.name.localeCompare(b.name, 'tr');
+
+/** The chosen Turkish voice, else the best female one, else any Turkish voice. */
+function deviceVoice(voiceURI?: string): SpeechSynthesisVoice | null {
+  const turkish = window.speechSynthesis.getVoices().filter((voice) => voice.lang.toLowerCase().startsWith('tr'));
+  return turkish.find((voice) => voice.voiceURI === voiceURI)
+    || turkish.filter((voice) => FEMALE_VOICE_NAME.test(voice.name)).sort(naturalFirst)[0]
+    || [...turkish].sort(naturalFirst)[0]
+    || null;
+}
 
 type RecognitionLike = {
   lang: string;
@@ -75,6 +89,7 @@ export function useVoice({ lang = 'tr-TR', onPartial, settings }: UseVoiceOption
   const sttCallbackRef = useRef<(text: string) => void>(() => {});
   const finalCallbackRef = useRef<((text: string) => void) | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const deviceStreamRef = useRef<object | null>(null);
   const voiceRequestRef = useRef<{ id: string; onEnd?: () => void } | null>(null);
   const voiceSequenceRef = useRef(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -311,7 +326,7 @@ export function useVoice({ lang = 'tr-TR', onPartial, settings }: UseVoiceOption
         window.speechSynthesis.getVoices()
           .filter((voice) => voice.lang.toLowerCase().startsWith('tr') && FEMALE_VOICE_NAME.test(voice.name))
           .map(({ voiceURI, name, lang }) => ({ voiceURI, name, lang }))
-          .sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+          .sort(naturalFirst)
       );
     };
     updateVoices();
@@ -636,13 +651,64 @@ export function useVoice({ lang = 'tr-TR', onPartial, settings }: UseVoiceOption
     });
   }, [settings, stopListening, clearAudio, startBargeInMonitor, stopBargeInMonitor]);
 
+  /**
+   * Device voice, streamed: each finished sentence is queued on speechSynthesis
+   * while the model is still writing, so Chloe starts talking after the first
+   * sentence instead of after the whole reply. The macOS app speaks via its
+   * native bridge, which takes whole replies, so it keeps the non-streamed path.
+   */
+  const beginDeviceSpeechStream = useCallback((opts?: SpeechOptions) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window) || (window as any).webkit?.messageHandlers?.chloeMac) return null;
+    const voice = deviceVoice(opts?.voiceURI);
+    if (!voice) return null;
+    stopListening(); clearAudio(); window.speechSynthesis.cancel();
+    const token = {}; deviceStreamRef.current = token;
+    let pending = 0, finished = false, started = false, ended = false;
+    setError(null); setIsPreparingSpeech(true); setIsSpeaking(false);
+    const live = () => deviceStreamRef.current === token;
+    const settle = () => {
+      if (ended || !live() || !finished || pending > 0) return;
+      ended = true; deviceStreamRef.current = null;
+      setIsPreparingSpeech(false); setIsSpeaking(false);
+      opts?.onEnd?.();
+    };
+    const say = (text: string) => {
+      const spoken = live() ? cleanSpeechText(text) : '';
+      if (!spoken) return;
+      const utter = new SpeechSynthesisUtterance(spoken);
+      utter.lang = lang; utter.voice = voice;
+      utter.rate = opts?.rate ?? 1; utter.pitch = opts?.pitch ?? 1;
+      utter.onstart = () => {
+        if (!live()) return;
+        if (!started) { started = true; opts?.onStart?.(); }
+        setIsPreparingSpeech(false); setIsSpeaking(true);
+      };
+      utter.onend = () => { pending--; settle(); };
+      utter.onerror = (event) => {
+        pending--;
+        if (live() && event.error !== 'interrupted' && event.error !== 'canceled') setError(`Sesli yanıt oynatılamadı: ${event.error}.`);
+        settle();
+      };
+      pending++;
+      window.speechSynthesis.speak(utter);
+    };
+    const buffer = createSpeechTextBuffer(say);
+    return { push: buffer.push, finish: () => { buffer.finish(); finished = true; settle(); } };
+  }, [lang, stopListening, clearAudio]);
+
   const beginSpeechStream = useCallback((opts?: SpeechOptions) => {
-    if (!settings || settings.jarvisSpeechEngine === 'device') return null;
+    if (!settings) return null;
+    if (settings.jarvisSpeechEngine === 'device') {
+      const device = beginDeviceSpeechStream(opts);
+      // Without any Turkish device voice (Windows ships none by default) use the
+      // API voice rather than answering in silence. macOS speaks natively.
+      if (device || (window as any).webkit?.messageHandlers?.chloeMac) return device;
+    }
     const queue = startCloudSpeech(opts);
     if (!queue) return null;
     const buffer = createSpeechTextBuffer((text) => queue.push(text));
     return { push: buffer.push, finish: () => { buffer.finish(); queue.finish(); } };
-  }, [settings, startCloudSpeech]);
+  }, [settings, startCloudSpeech, beginDeviceSpeechStream]);
 
   const speak = useCallback(
     (text: string, opts?: SpeechOptions) => {
@@ -651,12 +717,14 @@ export function useVoice({ lang = 'tr-TR', onPartial, settings }: UseVoiceOption
       clearAudio();
       voiceRequestRef.current = null;
       utteranceRef.current = null;
+      deviceStreamRef.current = null;
       const native = (window as any).webkit?.messageHandlers?.chloeMac;
       setError(null);
       // Cihaz sesi de madde imi/emoji/tablo okumamalı. Yalnızca kod veya
       // bağlantıdan oluşan yanıtta tam sessizlik yerine kısa bir bilgi verilir.
       const spoken = cleanSpeechText(text) || 'Yanıt ekranda.';
-      if (settings && settings.jarvisSpeechEngine !== 'device') {
+      const noDeviceVoice = !native && 'speechSynthesis' in window && !deviceVoice(opts?.voiceURI);
+      if (settings && (settings.jarvisSpeechEngine !== 'device' || noDeviceVoice)) {
         const queue = startCloudSpeech(opts);
         splitSpeechText(spoken).forEach((chunk) => queue?.push(chunk));
         queue?.finish();
@@ -696,11 +764,9 @@ export function useVoice({ lang = 'tr-TR', onPartial, settings }: UseVoiceOption
       }
       window.speechSynthesis.cancel();
 
-      const available = window.speechSynthesis.getVoices()
-        .filter((voice) => voice.lang.toLowerCase().startsWith('tr') && FEMALE_VOICE_NAME.test(voice.name));
-      const selectedVoice = available.find((voice) => voice.voiceURI === opts?.voiceURI) || available[0];
+      const selectedVoice = deviceVoice(opts?.voiceURI);
       if (!selectedVoice) {
-        setError('Cihazda tanınan bir Türkçe kadın sesi yok. İşletim sistemi ayarlarından Türkçe kadın sesi ekleyip JARVIS’i yeniden aç.');
+        setError('Cihazda Türkçe ses yok. İşletim sistemi ayarlarından Türkçe konuşma sesi ekleyip JARVIS’i yeniden aç.');
         setIsSpeaking(false);
         setIsPreparingSpeech(false);
         opts?.onEnd?.();
@@ -768,6 +834,7 @@ export function useVoice({ lang = 'tr-TR', onPartial, settings }: UseVoiceOption
     clearNativeSpeechStartTimer();
     voiceRequestRef.current = null;
     utteranceRef.current = null;
+    deviceStreamRef.current = null;
     const native = typeof window !== 'undefined' && (window as any).webkit?.messageHandlers?.chloeMac;
     if (native) native.postMessage({ action: 'stopSpeaking' });
     setIsSpeaking(false);
