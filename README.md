@@ -186,7 +186,7 @@ macOS derlemesi tamamlandığında **Finder → Uygulamalar → Chloe** açılar
 
 ## 🧪 Test & Kalite Güvencesi
 
-29 Ekim (v0.3.0, Windows 11) kontrolü: **246 birim/regresyon testinden 245'i geçti** (kalan 1 test canlı internet gerektirir ve ağsız ortamda çalıştırılamadı) + **117 izole API kontrolü** (Jarvis 15, anahtar/ses 28, Codex 15, Ofis 42, Atölye 17) hem `next start` hem de Windows kurulum paketindeki sunucuyla geçti. Lint, TypeScript ve üretim derlemesi temiz. Kurulum → açılış → pencere kapanınca sunucunun durması → kaldırma akışı test edildi. Canlı model yanıtı deterministik değildir; eksik veya kesilmiş çıktı başarı sayılmaz.
+30 Ekim (v0.3.0) kontrolü: **247 birim/regresyon testinden 246'sı geçti** (kalan 1 test canlı internet ister) + **117 izole API kontrolü** (Jarvis 15, anahtar/ses 28, Codex 15, Ofis 42, Atölye 17) Windows kurulum paketindeki sunucuyla geçti. macOS DMG, GitHub Actions Apple Silicon makinesinde derlenip paketlenmiş sunucu ve açılan uygulama ile denendi. Gerçek FreeLLMAPI bağlantısıyla Ayarlar (bağlantı testi, model listesi, sağlık), sohbet, Ajan Ofisi ve JARVIS sesli tur denendi. Canlı model yanıtı deterministik değildir; eksik veya kesilmiş çıktı başarı sayılmaz.
 
 ```bash
 # Çekirdek testler (Runtime, Voice UI, JARVIS, Bağlantılar, Skills, Codex, Workbench)

@@ -26,6 +26,7 @@ import { localRequestAllowed } from '@/lib/request-origin';
 import { thinkingOptions, thinkingOutputTokenLimit } from '@/lib/thinking-options';
 import { safeRoutedModel, type JarvisEvent } from '@/lib/jarvis-protocol';
 import { jarvisEffectiveSettings, jarvisModelSettings } from '@/lib/jarvis-model';
+import { preferFastVoiceModel } from '@/lib/fast-voice-model';
 import { voiceContext } from '@/lib/voice-context';
 
 // Derin araştırma; arama, sayfa okuma ve özetleme adımları nedeniyle normal
@@ -176,6 +177,7 @@ export async function POST(req: Request) {
       { status: 400 }
     );
   }
+  if (fastVoice) s = await preferFastVoiceModel(s);
   if (fastVoice) s.thinkingMode = 'fast';
   let routedModel: string | null = null;
   let routingEvent: ((event: JarvisEvent) => void) | undefined;

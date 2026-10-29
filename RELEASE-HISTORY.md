@@ -6,10 +6,26 @@
 
 - **Proje:** macOS `/Users/n64800/Documents/antigravity/aiasistant/kisisel-ai-asistan` · Windows `C:\Users\berka\Desktop\Chloe Assistant`
 - **Depo:** https://github.com/BerkayAtag/Chloe-Assistant (public) · Tanıtım sayfası: https://berkayatag.github.io/Chloe-Assistant/
-- **Paket:** `chloe-assistant` v0.2.9 · Next.js 16.4.3 · React 19 · TypeScript 5 · Tailwind v4
-- **Dağıtım:** macOS native `Chloe.app` (Swift WebView) + yerel Next.js sunucusu · Windows Inno Setup kurulumu (gömülü Node + bağımsız Next sunucusu + Edge uygulama penceresi)
-- **Sunucu adresi:** `http://127.0.0.1:3004` (native app / Windows başlatıcısı kendi sunucusunu başlatır)
-- **Son güncelleme:** 2026-10-30 — v0.2.9: Windows kurulumunda API rotalarının çökmesi, Ayarlar kapatma, simge ve görsel düzeltmeleri
+- **Paket:** `chloe-assistant` v0.3.0 · Next.js 16.4.3 · React 19 · TypeScript 5 · Tailwind v4
+- **Dağıtım:** macOS DMG (`Chloe.app`: Swift WebView + gömülü Node + bağımsız Next sunucusu; GitHub Actions `macOS DMG` iş akışı) · Windows Inno Setup kurulumu (gömülü Node + bağımsız Next sunucusu + Edge uygulama penceresi) · kaynak kurulum (`script/build_and_run.sh`)
+- **Sunucu adresi:** `http://127.0.0.1:3004` (macOS uygulaması / Windows başlatıcısı kendi sunucusunu başlatır)
+- **Son güncelleme:** 2026-10-30 — v0.3.0: macOS DMG, akıcı JARVIS sesi, Ajan Ofisi dayanıklılığı
+
+## 2026-10-30 — v0.3.0: macOS DMG, akıcı JARVIS sesi ve canlı API testleri
+
+- **macOS DMG:** `script/build-macos-dmg.sh` kendi Node'unu ve bağımsız Next sunucusunu içeren `Chloe.app` üretir ve sürükle-bırak DMG'ye koyar. Swift uygulaması paket içi sunucuyu bulursa onu başlatır (`launchBundledServer`); veriler `~/Library/Application Support/Chloe/data` (`CHLOE_DATA_DIR`), günlük `~/Library/Logs/Chloe/server.log`. Kaynak kurulum davranışı değişmedi. `.github/workflows/macos-dmg.yml` (macos-15, Apple Silicon) derler, paketlenmiş sunucuyu dener, uygulamayı gerçekten açıp 3004'ten yanıt bekler, `v*` etiketlerinde DMG'yi sürüme ekler. Uygulama ad-hoc imzalı, noter onaysız (ilk açılış: sağ tık → Aç). Intel DMG yok.
+- Yeni Swift araç zincirinde `main.swift` + `@main` derleme hatası veriyordu; dosya `ChloeDesktopApp.swift` olarak yeniden adlandırıldı.
+- Tüm `data/` yolları `src/lib/data-dir.ts` (`CHLOE_DATA_DIR`) üzerinden; özel avatarlar `data/avatars` (eski `public/` konumu okunmaya devam ediyor). Paketler artık depo belgelerini ve `src/` kaynaklarını içermiyor.
+- **Akıcı JARVIS (jarvis-ai-assistant incelendi):** o uygulamanın hızı bas-konuş (sessizlik beklemeden gönderim), akışlı STT ve araçsız hızlı modelden geliyor; sesli yanıt üretmiyor. Chloe'ye uyarlananlar:
+  - Boşluk tuşunu basılı tut-konuş-bırak (bırakınca anında gönderilir).
+  - Cihaz sesi artık cümle cümle akışla okunuyor (önceden yanıtın tamamı bekleniyordu); Edge'in "Online (Natural)" nöral sesleri öncelikli. Yeni kurulumlarda varsayılan: cihaz sesi, 1,2 sn sessizlik. Kayıtlı tercihler korunur.
+  - Türkçe cihaz sesi yoksa sessiz kalmak yerine API sesine geçilir.
+  - FreeLLMAPI `auto:fast` ölçümde 4–7 sn, bazen 502/bozuk çıktı verdi; flash-lite modeller 0,5–1,2 sn. Sesli turda gateway'in listelediği ilk flash-lite modeli seçiliyor (10 dk önbellek), yoksa `auto:fast` kalıyor (`src/lib/fast-voice-model.ts`).
+  - Ölçüm (gerçek FreeLLMAPI, Edge): ilk cümlenin okumaya hazır olması 3,8–4,3 sn → 0,9–1,2 sn.
+- **Ajan Ofisi:** gerçek FreeLLMAPI `auto` ile geliştirici adımı önce 3.000 token sınırında kesildi, sonra 90 sn'de zaman aşımına uğradı. Adım bütçesi 8.192 token, adım süresi 150 sn, çalışma sınırı 10 dk; zaman aşımı/kesilme/boş yanıtta adım bir kez yeniden deneniyor. Aynı görev artık tamamlanıyor.
+- **Ayarlar:** API anahtarı alanı yalnız odaktan çıkınca kaydediliyordu; "Bağlantıyı Dene", "Modelleri getir" ve sağlık kontrolü artık alana yeni yazılmış anahtarı kullanıyor.
+- Doğrulama: 246/247 birim testi (yeni: akışlı cihaz sesi), Windows kurulum paketiyle 117 API kontrolü, macOS'ta paket sunucusu + uygulama açılışı (CI). Gerçek API ile: Ayarlar bağlantı testi/78 model/sağlık, sohbet (ilk metin ~3 sn), Ajan Ofisi tam çalışma, JARVIS yazılı tur + akışlı ses (Edge). Test anahtarı yalnız geçici test kasasında tutuldu ve silindi; pakete eklenmedi.
+- Doğrulanmayanlar: gerçek mikrofonla konuşma tanıma, Edge'in Türkçe doğal sesi (bu ortamda Microsoft ses hizmetine erişim yoktu; mekanik İngilizce sesle doğrulandı), DMG'nin gerçek bir Mac'te kullanıcı tarafından açılması, Google/Microsoft OAuth hesap bağlama (uygulama kimliği gerekir).
 
 ## 2026-10-30 — v0.2.9: Windows kurulum düzeltmeleri
 
