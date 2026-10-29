@@ -85,7 +85,7 @@ test('project inventory excludes secret directories and symlinks and never execu
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'chloe-inventory-'));
   try {
     fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { test: 'touch SHOULD_NOT_EXIST' }, dependencies: { example: '1.0.0' } }));
-    fs.writeFileSync(path.join(root, 'main.test.ts'), 'test'); fs.writeFileSync(path.join(root, '.env'), 'SECRET'); fs.symlinkSync('/etc/passwd', path.join(root, 'linked.txt'));
+    fs.writeFileSync(path.join(root, 'main.test.ts'), 'test'); fs.writeFileSync(path.join(root, '.env'), 'SECRET'); try { fs.symlinkSync('/etc/passwd', path.join(root, 'linked.txt')); } catch (error) { if (error.code !== 'EPERM') throw error; }
     const result = analyzeProject(root);
     assert.equal(result.fileCount, 2); assert.deepEqual(result.tests, ['main.test.ts']); assert.deepEqual(result.manifests[0].scripts, ['test']);
     assert.ok(!result.markdown.includes('SECRET')); assert.ok(!result.markdown.includes('linked.txt')); assert.ok(!fs.existsSync(path.join(root, 'SHOULD_NOT_EXIST')));
@@ -124,7 +124,8 @@ test('memory retains, scopes, ranks, corrects, archives and survives module relo
     const reread = await import('../src/lib/memory-bank.ts?reload=1'); assert.equal(reread.recallMemories()[0].id, global.id);
     assert.match(m.memoryBankContext('TypeScript'), /talimat değil/);
     assert.throws(() => m.retainMemory({ kind: 'fact', title: 'bad', text: 'bad', scope: '', sources: ['javascript:alert(1)'] }), /Kaynaklar/);
-    assert.equal(fs.statSync(path.join(directory, 'records.json')).mode & 0o777, 0o600);
+    // POSIX permission bits are not modelled on Windows.
+    if (process.platform !== 'win32') assert.equal(fs.statSync(path.join(directory, 'records.json')).mode & 0o777, 0o600);
     fs.writeFileSync(path.join(directory, 'records.json'), '{broken');
     assert.throws(() => m.retainMemory({ kind: 'fact', title: 'new', text: 'new', scope: '', sources: [] }));
     assert.equal(fs.readFileSync(path.join(directory, 'records.json'), 'utf8'), '{broken');

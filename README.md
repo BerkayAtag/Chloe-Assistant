@@ -2,17 +2,19 @@
 
 # ✦ Chloe Assistant
 
-### Your Intelligent Personal AI Workspace · Powered by Any Model · Native on macOS
+### Your Intelligent Personal AI Workspace · Powered by Any Model · Windows & macOS
 
-[![macOS 15+](https://img.shields.io/badge/macOS-15%2B%20Sequoia-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com)
+[![Windows 10/11](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4?style=for-the-badge&logo=windows&logoColor=white)](#windows)
+[![macOS 15+](https://img.shields.io/badge/macOS-15%2B%20Sequoia-black?style=for-the-badge&logo=apple&logoColor=white)](#macos)
 [![Next.js 16](https://img.shields.io/badge/Next.js-16.4-black?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org)
 [![TypeScript 5](https://img.shields.io/badge/TypeScript-5.0-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Local-First](https://img.shields.io/badge/Security-Local--First%20%26%20Encrypted-10B981?style=for-the-badge&logo=shield&logoColor=white)](#guvenlik)
-[![Release v0.2.7](https://img.shields.io/badge/Release-v0.2.7-8B5CF6?style=for-the-badge&logo=github)](https://github.com/BerkayAtag/chloe-assistant/releases/tag/v0.2.7)
+[![Release v0.2.8](https://img.shields.io/badge/Release-v0.2.8-8B5CF6?style=for-the-badge&logo=github)](https://github.com/BerkayAtag/Chloe-Assistant/releases/tag/v0.2.8)
 
 <br/>
 
-**[📦 İndir (v0.2.7 · kaynak + kurucu)](https://github.com/BerkayAtag/chloe-assistant/releases/tag/v0.2.7)** ·
+**[🌐 Tanıtım sayfası](https://berkayatag.github.io/Chloe-Assistant/)** ·
+**[📦 İndir (v0.2.8 · Windows setup + macOS)](https://github.com/BerkayAtag/Chloe-Assistant/releases/tag/v0.2.8)** ·
 **[🚀 Hızlı Kurulum](#kurulum)** ·
 **[🎙️ JARVIS & Ses](#jarvis)** ·
 **[👥 Ajan Ofisi](#ajan-ofisi)** ·
@@ -33,7 +35,7 @@
 
 ## 🌟 Öne Çıkan Özellikler
 
-Chloe; günlük sesli yapay zekâ asistanlığını, derin web araştırmasını ve projeler üzerinde çalışan otonom ajan ekiplerini tek bir güvenli, yerel öncelikli macOS ve web çalışma alanında bir araya getirir.
+Chloe; günlük sesli yapay zekâ asistanlığını, derin web araştırmasını ve projeler üzerinde çalışan otonom ajan ekiplerini tek bir güvenli, yerel öncelikli Windows, macOS ve web çalışma alanında bir araya getirir.
 
 <table width="100%">
 <tr>
@@ -141,40 +143,48 @@ JARVIS modunu açtığınızda hem konuşabilir hem de tüm yönetim ve kodlama 
 <a id="kurulum"></a>
 ## 🚀 Hızlı Kurulum & Download
 
-### Gereksinimler
-- **macOS:** macOS 15+ (Sequoia veya daha yenisi)
-- **Node.js:** v22.0.0 veya daha yenisi
-- **Komut Satırı Araçları:** Apple Command Line Tools (`xcode-select --install`)
+<a id="windows"></a>
+### Windows 10 / 11 (x64)
 
-### 1. İndirme Paketi (GitHub Releases)
-En güncel sürüm paketini indirin:
-👉 **[Chloe v0.2.7 İndir (.zip)](https://github.com/BerkayAtag/chloe-assistant/releases/tag/v0.2.7)**
+👉 **[Chloe.Assistant.Setup-0.2.8.exe](https://github.com/BerkayAtag/Chloe-Assistant/releases/download/v0.2.8/Chloe.Assistant.Setup-0.2.8.exe)** dosyasını indirip çalıştırın.
 
-Paketi kalıcı bir klasöre çıkarın ve klasör içindeki **`Install Chloe.command`** dosyasını çift tıklayarak çalıştırın. Kurucu bağımlılıkları derler ve uygulamayı `/Applications/Chloe.app` konumuna kurar.
+- Kullanıcı başına kurulur (`%LOCALAPPDATA%\Programs\Chloe Assistant`), yönetici izni gerekmez. Node.js ve diğer bileşenler pakete dahildir.
+- **Başlat → Chloe Assistant** yerel sunucuyu `http://127.0.0.1:3004` adresinde başlatır ve uygulamayı kendi Edge uygulama penceresinde açar. Pencere kapanınca sunucu da kapanır.
+- Proje klasörü seçimi Windows klasör penceresiyle yapılır. Ajan Ofisi'ndeki tarayıcı otomasyonu yüklü Microsoft Edge'i kullanır.
+- Yalnız macOS'ta olanlar: bilgisayar yönetimi komutları, macOS sistem sesleri ve native dikte. Windows'ta konuşma tanıma/seslendirme Edge'in yerleşik hizmetini veya seçtiğiniz ses API'sini kullanır.
+- Kaldırma: **Ayarlar → Uygulamalar → Chloe Assistant**. API anahtar kasası (`%USERPROFILE%\.chloe`) ve sohbet verisi (`app\data`) kaldırmada silinmez.
+- Setup'ı kaynaktan üretmek için: `npm ci` ve ardından `Build-Windows-Setup.cmd` (Inno Setup 6 gerekir). Çıktı: `dist\windows`.
 
-Paket **kaynak kod + yerel kurucu** içerir; taşınabilir, Apple notarizasyonlu bir `.app` değildir. Kaynak klasörünü kurulumdan sonra silmeyin/taşımayın. Özel depoda indirmek için GitHub erişiminiz gerekir. Güncellemeler aynı uygulama yoluna kurulur; önceki sürüm ZIP yedeği olarak korunur, anahtar kasası silinmez.
+<a id="macos"></a>
+### macOS 15+
 
-### 2. Kaynak Koddan Kurulum
+**Gereksinimler:** Node.js v22+, Apple Command Line Tools (`xcode-select --install`).
+
+👉 **[Chloe-Assistant-0.2.8-macOS.zip](https://github.com/BerkayAtag/Chloe-Assistant/releases/download/v0.2.8/Chloe-Assistant-0.2.8-macOS.zip)** paketini kalıcı bir klasöre çıkarın ve klasör içindeki **`Install Chloe.command`** dosyasını çift tıklayarak çalıştırın. Kurucu bağımlılıkları derler ve uygulamayı `/Applications/Chloe.app` konumuna kurar.
+
+Paket **kaynak kod + yerel kurucu** içerir; taşınabilir, Apple notarizasyonlu bir `.app` değildir. Kaynak klasörünü kurulumdan sonra silmeyin/taşımayın. Güncellemeler aynı uygulama yoluna kurulur; önceki sürüm ZIP yedeği olarak korunur, anahtar kasası silinmez.
+
+### Kaynak Koddan Kurulum
 
 ```bash
-# Depoyu klonlayın
-git clone https://github.com/BerkayAtag/chloe-assistant.git
-cd chloe-assistant
-
-# Bağımlılıkları yükleyin
+git clone https://github.com/BerkayAtag/Chloe-Assistant.git
+cd Chloe-Assistant
 npm ci
 
-# Uygulamayı derleyin ve MacBook'unuza kurun
+# Geliştirme modu (Windows, macOS, Linux): http://127.0.0.1:3000
+npm run dev
+
+# macOS: derle ve Applications'a kur
 ./script/build_and_run.sh --verify
 ```
 
-Derleme tamamlandığında **Finder → Uygulamalar → Chloe** açılarak kullanıma hazır hale gelir. Arka plandaki yerel servis `http://127.0.0.1:3004` adresinde çalışır.
+macOS derlemesi tamamlandığında **Finder → Uygulamalar → Chloe** açılarak kullanıma hazır hale gelir. Arka plandaki yerel servis `http://127.0.0.1:3004` adresinde çalışır.
 
 ---
 
 ## 🧪 Test & Kalite Güvencesi
 
-19 Ekim kontrolü: **174 birim/regresyon + 108 izole API kontrolü + 4 native komut kontrolü geçti.** Gerçek kayıtlı bağlantıyla kod üretme/kaydetme/çalıştırma (8 kontrol) ve ekip → denetim → açık uygulama → çalıştırma da geçti. Canlı model yanıtı deterministik değildir; eksik veya kesilmiş çıktı başarı sayılmaz.
+29 Ekim (v0.2.8, Windows 11) kontrolü: **246 birim/regresyon testinden 245'i geçti** (kalan 1 test canlı internet gerektirir ve ağsız ortamda çalıştırılamadı) + **117 izole API kontrolü** (Jarvis 15, anahtar/ses 28, Codex 15, Ofis 42, Atölye 17) hem `next start` hem de Windows kurulum paketindeki sunucuyla geçti. Lint, TypeScript ve üretim derlemesi temiz. Kurulum → açılış → pencere kapanınca sunucunun durması → kaldırma akışı test edildi. Canlı model yanıtı deterministik değildir; eksik veya kesilmiş çıktı başarı sayılmaz.
 
 ```bash
 # Çekirdek testler (Runtime, Voice UI, JARVIS, Bağlantılar, Skills, Codex, Workbench)
@@ -206,7 +216,7 @@ npm run test:code-e2e
 npm run test:team-e2e
 ```
 
-18–19 Ekim doğrulaması ve bilinen sınırlar: [Release History](RELEASE-HISTORY.md#v026--2026-10-19).
+Doğrulama geçmişi ve bilinen sınırlar: [Release History](RELEASE-HISTORY.md).
 
 **Canlı ses testi sınırı:** 19 Ekim'de kullanılan Google ücretsiz TTS kotası HTTP 429 döndürdü. PCM protokolü ve oynatma/iptal regresyonları test edildi; son düzeltmeden sonra gerçek sağlayıcı + hoparlör zinciri kota yenilendiğinde yeniden denenmelidir. Hiçbir sürüm notu tüm sağlayıcıların her zaman yanıt vereceği anlamına gelmez.
 
@@ -216,7 +226,7 @@ npm run test:team-e2e
 ## 🔒 Gizlilik & Güvenlik
 
 - **Veri akışı:** Modeli kullanırken mesaj ve seçili dosya bağlamı yapılandırdığınız sağlayıcıya gider. Konuşma tanıma Apple/tarayıcı hizmetini kullanabilir; bulut seslendirme metni ses sağlayıcısına gönderir.
-- **Ayrık Veri Saklama:** Ana bağlantı kasası macOS'ta `~/Library/Application Support/Chloe/connections` altındadır. Ajan kasası `data/office` içindedir. Sohbet/yerel dosyalar anahtar kasası gibi şifrelenmiş sayılmaz; `.gitignore` özel verileri dağıtımdan dışlar.
+- **Ayrık Veri Saklama:** Ana bağlantı kasası macOS'ta `~/Library/Application Support/Chloe/connections`, Windows'ta `%USERPROFILE%\.chloe\connections` altındadır. Ajan kasası `data/office` içindedir. Sohbet/yerel dosyalar anahtar kasası gibi şifrelenmiş sayılmaz; `.gitignore` özel verileri dağıtımdan dışlar.
 - **İnternet Güvenlik Sınırı:** Tarayıcı ve araştırma modülleri döngüsel (loopback) ve özel yerel ağ adreslerine erişemez (SSRF koruması).
 - **Yerel sunucu:** Desteklenen `npm run dev`, `npm start` ve native açılış yolları `127.0.0.1` dinler. Host/Origin kontrolleri kimlik doğrulama değildir; sunucuyu internete açmayın veya ağ arayüzünü geçersiz kılmayın.
 - **Yedekleme:** Önceki uygulama `~/Library/Application Support/Chloe/app-backups/` altında ZIP olarak korunur. Derleme kopyası `.build.noindex` içindedir; Spotlight'ta ikinci bir uygulama oluşturmaz.

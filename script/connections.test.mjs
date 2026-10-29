@@ -18,8 +18,8 @@ function isolated(run) {
 test('first migration is encrypted and preserves provider, key and model', () => isolated((dir) => {
   const v = writeConnections(base, { migration: true }); assert.equal(v.connection.apiKey, base.apiKey);
   assert.equal(readConnections().connection.cloudModel, 'g-test');
-  for (const name of ['vault.enc', 'vault.enc.bak']) { assert.ok(!readFileSync(path.join(dir, name)).includes(base.apiKey)); assert.equal(statSync(path.join(dir, name)).mode & 0o777, 0o600); }
-  assert.equal(statSync(path.join(dir, 'master.key')).mode & 0o777, 0o600);
+  for (const name of ['vault.enc', 'vault.enc.bak']) { assert.ok(!readFileSync(path.join(dir, name)).includes(base.apiKey)); if (process.platform !== 'win32') assert.equal(statSync(path.join(dir, name)).mode & 0o777, 0o600); }
+  if (process.platform !== 'win32') assert.equal(statSync(path.join(dir, 'master.key')).mode & 0o777, 0o600);
 }));
 test('a separate process recovers the same vault after restart', () => isolated(() => {
   writeConnections(base, { migration: true });

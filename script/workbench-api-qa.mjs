@@ -10,15 +10,16 @@ let spawnedServer = null;
 let tmpMemoryDir = null;
 
 if (!base) {
-  tmpMemoryDir = await fs.mkdtemp('/tmp/chloe-workbench-qa.');
+  tmpMemoryDir = await fs.mkdtemp(path.join(os.tmpdir(), 'chloe-workbench-qa.'));
   process.env.CHLOE_MEMORY_DIR = tmpMemoryDir;
   const testPort = 3918;
   base = `http://127.0.0.1:${testPort}`;
-  spawnedServer = spawn('npm', ['start', '--', '-H', '127.0.0.1', '-p', String(testPort)], {
+  // Start Next directly: npm is a .cmd shim on Windows that spawn() cannot run without a shell.
+  spawnedServer = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '-H', '127.0.0.1', '-p', String(testPort)], {
     env: { ...process.env, CHLOE_MEMORY_DIR: tmpMemoryDir, PORT: String(testPort) },
     stdio: 'ignore'
   });
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 100; i++) {
     await new Promise((r) => setTimeout(r, 200));
     try {
       const res = await fetch(`${base}/api/identity`);
@@ -27,7 +28,7 @@ if (!base) {
   }
 }
 
-assert.ok(base && process.env.CHLOE_MEMORY_DIR?.startsWith('/tmp/chloe-workbench-qa.'), 'An isolated test server is required.');
+assert.ok(base && process.env.CHLOE_MEMORY_DIR?.startsWith(path.join(os.tmpdir(), 'chloe-workbench-qa.')), 'An isolated test server is required.');
 let count = 0; const check = (label, value) => { assert.ok(value, label); console.log('PASS', label); count++; };
 const headers = { 'Content-Type': 'application/json', Origin: base, 'X-Chloe-Client': 'workbench' };
 async function api(body, extra = {}) { const r = await fetch(base + '/api/office/workbench', { method: 'POST', headers: { ...headers, ...extra }, body: JSON.stringify(body), signal: AbortSignal.timeout(40000) }); return { status: r.status, ...await r.json() }; }

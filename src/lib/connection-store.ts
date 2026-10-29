@@ -167,7 +167,8 @@ export function writeConnections(patch: unknown, options: { migration?: boolean;
     const encoded = Buffer.concat([iv, cipher.update(JSON.stringify(vault), 'utf8'), cipher.final(), cipher.getAuthTag()]);
     const file = path.join(directory, 'vault.enc'); const temporary = file + '.' + randomUUID() + '.tmp';
     writeFileSync(temporary, encoded, { mode: 0o600, flag: 'wx' });
-    const written = openSync(temporary, 'r'); try { fsyncSync(written); } finally { closeSync(written); }
+    // Windows rejects fsync on read-only handles (EPERM); r+ works on every platform.
+    const written = openSync(temporary, 'r+'); try { fsyncSync(written); } finally { closeSync(written); }
     try {
       if (existsSync(file) && !previous.recovered) copyFileSync(file, file + '.bak');
       renameSync(temporary, file); chmodSync(file, 0o600);

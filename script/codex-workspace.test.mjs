@@ -16,6 +16,8 @@ import {
 let temporaryRoot;
 let workspace;
 let outside;
+// Windows needs Developer Mode or admin rights for file symlinks; symlink checks run only where one can be created.
+let hasSymlink = false;
 
 before(() => {
   temporaryRoot = mkdtempSync(path.join(os.tmpdir(), 'chloe-code-workspace-'));
@@ -31,7 +33,7 @@ before(() => {
   writeFileSync(path.join(workspace, '.DS_Store'), 'ignored');
   writeFileSync(path.join(workspace, 'next-env.d.ts'), 'generated');
   writeFileSync(outside, 'outside project');
-  symlinkSync(outside, path.join(workspace, 'src', 'external.txt'));
+  try { symlinkSync(outside, path.join(workspace, 'src', 'external.txt')); hasSymlink = true; } catch (error) { if (error.code !== 'EPERM') throw error; }
 });
 
 after(() => {
@@ -57,7 +59,7 @@ test('file reads return content and a stable SHA-256 version', () => {
 });
 
 test('path traversal, absolute paths, symlinks, and credential files are rejected', () => {
-  for (const file of ['../outside.txt', path.join(temporaryRoot, 'outside.txt'), 'src/external.txt', '.env.local']) {
+  for (const file of ['../outside.txt', path.join(temporaryRoot, 'outside.txt'), ...(hasSymlink ? ['src/external.txt'] : []), '.env.local']) {
     assert.throws(() => readWorkspaceFile(workspace, file), WorkspaceError);
   }
   assert.throws(() => readWorkspaceFile(os.tmpdir(), 'missing'), WorkspaceError);
@@ -95,7 +97,7 @@ test('agent paths accept scoped absolute paths and root listings without weakeni
   assert.equal(agentWorkspacePath(root, root, true), '');
   assert.equal(agentWorkspacePath(root, '.', true), '');
   assert.equal(agentWorkspacePath(root, '', true), '');
-  for (const input of [outside, '../outside.txt', path.join(root, '.env.local'), path.join(root, 'src/external.txt')]) {
+  for (const input of [outside, '../outside.txt', path.join(root, '.env.local'), ...(hasSymlink ? [path.join(root, 'src/external.txt')] : [])]) {
     assert.throws(() => agentWorkspacePath(root, input), WorkspaceError);
   }
 });

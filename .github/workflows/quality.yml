@@ -23,3 +23,18 @@ jobs:
       - name: Unit and security regression tests (no live API keys)
         run: node --experimental-strip-types --test script/*.test.mjs
       - run: npm run build
+
+  windows:
+    # The Windows installer runs the same server; keep its platform paths tested.
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Unit and security regression tests (no live API keys)
+        shell: bash
+        run: node --experimental-strip-types --test script/*.test.mjs

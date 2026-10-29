@@ -20,7 +20,19 @@ declare global {
 export function sendNativeAction(action: NativeAction, payload: NativeActionPayload = {}): boolean {
   if (typeof window === 'undefined') return false;
   const handler = window.webkit?.messageHandlers?.chloeMac;
-  if (!handler) return false;
+  if (!handler) return action === 'chooseWorkspace' && chooseWorkspaceViaServer();
   handler.postMessage({ action, ...payload });
+  return true;
+}
+
+// Windows has no WebKit bridge: the local server opens the system folder dialog
+// and the result is delivered through the same event the macOS app dispatches.
+function chooseWorkspaceViaServer(): boolean {
+  if (!/Windows/u.test(navigator.userAgent)) return false;
+  const deliver = (path = '') => window.dispatchEvent(new CustomEvent('chloeWorkspace', { detail: { path } }));
+  void fetch('/api/local/folder', { method: 'POST', headers: { 'X-Chloe-Client': 'workspace' } })
+    .then((response) => response.ok ? response.json() as Promise<{ path?: string }> : {})
+    .then((result: { path?: string }) => deliver(result.path))
+    .catch(() => deliver());
   return true;
 }

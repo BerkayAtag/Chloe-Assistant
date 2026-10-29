@@ -75,7 +75,14 @@ export async function POST(req: Request) {
     }
 
     try {
-      browser = await chromium.launch({ headless: true });
+      browser = await chromium.launch({ headless: true }).catch(async (error) => {
+        // Without a downloaded Playwright Chromium, reuse an installed Edge/Chrome
+        // (Edge ships with Windows) before asking for a separate download.
+        for (const channel of ['msedge', 'chrome']) {
+          try { return await chromium.launch({ headless: true, channel }); } catch { /* try the next channel */ }
+        }
+        throw error;
+      });
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'bilinmeyen başlatma hatası';
       return NextResponse.json(

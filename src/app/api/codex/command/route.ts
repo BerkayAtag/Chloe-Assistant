@@ -19,6 +19,16 @@ const runningWorkspaces = new Set<string>();
 const MAX_OUTPUT_BYTES = 160_000;
 const TIMEOUT_MS = 120_000;
 
+// npm and tsc are .cmd shims on Windows, which spawn() refuses without a shell.
+// Running their JavaScript entry points with this Node keeps shell: false everywhere.
+function npmTask(id: string, label: string, args: string[]): RunnableTask {
+  // The Windows build ships Node without npm, so also look beside an npm on PATH.
+  const pathDirectories = process.platform === 'win32' ? (process.env.PATH || '').split(path.delimiter).filter(Boolean) : [];
+  const cli = [process.env.npm_execpath, ...[path.dirname(process.execPath), ...pathDirectories].map((directory) => path.join(directory, 'node_modules', 'npm', 'bin', 'npm-cli.js'))]
+    .find((candidate) => candidate && /npm-cli\.js$/u.test(candidate) && fs.existsSync(candidate));
+  return cli ? { id, label, executable: process.execPath, args: [cli, ...args] } : { id, label, executable: 'npm', args };
+}
+
 function availableTasks(root: string) {
   let scripts: Record<string, unknown> = {};
   try {
@@ -26,15 +36,16 @@ function availableTasks(root: string) {
     scripts = packageJSON.scripts || {};
   } catch { /* Projects without package.json may still offer Swift and Git tasks. */ }
   const tasks: RunnableTask[] = [];
-  if (typeof scripts.test === 'string') tasks.push({ id: 'test', label: 'Testleri çalıştır', executable: 'npm', args: ['test'] });
+  if (typeof scripts.test === 'string') tasks.push(npmTask('test', 'Testleri çalıştır', ['test']));
   for (const script of Object.keys(scripts).filter((name) => name.startsWith('test:')).slice(0, 20)) {
-    if (typeof scripts[script] === 'string') tasks.push({ id: script, label: `Test: ${script.slice(5)}`, executable: 'npm', args: ['run', script] });
+    if (typeof scripts[script] === 'string') tasks.push(npmTask(script, `Test: ${script.slice(5)}`, ['run', script]));
   }
   for (const script of ['lint', 'build'] as const) {
-    if (typeof scripts[script] === 'string') tasks.push({ id: script, label: script === 'lint' ? 'Lint çalıştır' : 'Üretim derlemesi', executable: 'npm', args: ['run', script] });
+    if (typeof scripts[script] === 'string') tasks.push(npmTask(script, script === 'lint' ? 'Lint çalıştır' : 'Üretim derlemesi', ['run', script]));
   }
-  if (fs.existsSync(path.join(root, 'node_modules/.bin/tsc'))) {
-    tasks.push({ id: 'typecheck', label: 'TypeScript kontrolü', executable: path.join(root, 'node_modules/.bin/tsc'), args: ['--noEmit'] });
+  const tsc = path.join(root, 'node_modules', 'typescript', 'bin', 'tsc');
+  if (fs.existsSync(tsc)) {
+    tasks.push({ id: 'typecheck', label: 'TypeScript kontrolü', executable: process.execPath, args: [tsc, '--noEmit'] });
   }
   if (fs.existsSync(path.join(root, 'Package.swift'))) tasks.push({ id: 'swiftBuild', label: 'Swift derlemesi', executable: 'swift', args: ['build'] });
   if (fs.existsSync(path.join(root, '.git'))) tasks.push({ id: 'diffCheck', label: 'Git diff kontrolü', executable: 'git', args: ['diff', '--check'] });
@@ -95,7 +106,10 @@ export async function POST(request: Request) {
             NODE_ENV: process.env.NODE_ENV || 'development',
             CI: '1',
             NO_COLOR: '1',
-            npm_config_userconfig: '/dev/null',
+            npm_config_userconfig: os.devNull,
+            // Windows tools fail without these system variables.
+            ...(process.platform === 'win32' ? Object.fromEntries(['SystemRoot', 'ComSpec', 'PATHEXT', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP']
+              .flatMap((name) => process.env[name] ? [[name, process.env[name]]] : [])) : {}),
             npm_config_audit: 'false',
             npm_config_fund: 'false',
           },
@@ -107,7 +121,8 @@ export async function POST(request: Request) {
         let escalation: ReturnType<typeof setTimeout> | undefined;
         const stop = () => {
           if (child.pid && process.platform !== 'win32') terminateGroup(child.pid, 'SIGTERM');
-          else child.kill('SIGTERM');
+          // Windows has no process groups; taskkill /T also ends npm's child processes.
+          else if (child.pid && child.exitCode === null) spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' }).once('error', () => child.kill());
           escalation ||= setTimeout(() => {
             if (child.pid && process.platform !== 'win32') terminateGroup(child.pid, 'SIGKILL');
             else if (child.exitCode === null) child.kill('SIGKILL');
@@ -140,7 +155,8 @@ export async function POST(request: Request) {
           clearTimeout(timeout);
           clearTimeout(escalation);
           request.signal.removeEventListener('abort', abort);
-          reject(error);
+          reject((error as NodeJS.ErrnoException).code === 'ENOENT'
+            ? new Error(`${path.basename(executable)} bulunamadı. Node.js/npm veya ilgili aracın kurulu ve PATH içinde olduğundan emin ol.`) : error);
         });
         request.signal.addEventListener('abort', abort, { once: true });
         if (request.signal.aborted) abort();

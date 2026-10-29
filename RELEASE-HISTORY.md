@@ -4,11 +4,28 @@
 > Yeni bir oturuma başlarken ÖNCE bu dosyayı oku: nerede kalındı, ne yapıldı,
 > ne yarım, ne sırada. Her anlamlı işten sonra buraya bir madde ekle.
 
-- **Proje:** `/Users/n64800/Documents/antigravity/aiasistant/kisisel-ai-asistan`
-- **Paket:** `chloe-assistant` v0.2.7 · Next.js 16.4 · React 19 · TypeScript 5 · Tailwind v4
-- **Dağıtım:** macOS native `Chloe.app` (Swift WebView) + yerel Next.js sunucusu
-- **Sunucu adresi:** `http://127.0.0.1:3004` (native app kendi sunucusunu başlatır)
-- **Son güncelleme:** 2026-10-21 — v0.2.7 yayınlandı ve kurulu uygulama açıldı; GitHub kalite kontrolleri geçti; güvenlik incelemesi kısmi
+- **Proje:** macOS `/Users/n64800/Documents/antigravity/aiasistant/kisisel-ai-asistan` · Windows `C:\Users\berka\Desktop\Chloe Assistant`
+- **Depo:** https://github.com/BerkayAtag/Chloe-Assistant (public) · Tanıtım sayfası: https://berkayatag.github.io/Chloe-Assistant/
+- **Paket:** `chloe-assistant` v0.2.8 · Next.js 16.4.3 · React 19 · TypeScript 5 · Tailwind v4
+- **Dağıtım:** macOS native `Chloe.app` (Swift WebView) + yerel Next.js sunucusu · Windows Inno Setup kurulumu (gömülü Node + bağımsız Next sunucusu + Edge uygulama penceresi)
+- **Sunucu adresi:** `http://127.0.0.1:3004` (native app / Windows başlatıcısı kendi sunucusunu başlatır)
+- **Son güncelleme:** 2026-10-29 — v0.2.8: Windows hata düzeltmeleri, Windows setup, public depo ve GitHub Pages tanıtım sayfası
+
+## 2026-10-29 — v0.2.8: Windows uyumluluğu, hata düzeltmeleri ve Windows setup
+
+- Kod Windows 11 üzerinde test edildi. Bulunan ve düzeltilen hatalar:
+  - **API anahtar kasası Windows'ta hiç kaydedemiyordu:** salt okunur tanıtıcıda `fsync` Windows'ta `EPERM` verir. Geçici dosya `r+` ile açılıyor (`src/lib/connection-store.ts`). 13 kasa testi bu yüzden düşüyordu.
+  - **Chloe Code proje komutları Windows'ta çalışmıyordu:** `npm`/`tsc` `.cmd` kabuklarıdır ve `shell: false` ile başlatılamaz. npm ve TypeScript artık JavaScript giriş noktalarıyla aynı Node üzerinden çalışıyor; Windows sistem değişkenleri aktarılıyor, iptalde `taskkill /T` ile süreç ağacı kapanıyor, eksik araç anlaşılır hata veriyor.
+  - **Ajan dosya yolları Windows'ta `\` ile dönüyordu:** `agentWorkspacePath` artık her platformda `/` ayraçlı göreli yol döndürür.
+  - **.docx yükleme Windows'ta okunamıyordu** (`unzip` yok): ZIP girdisi Node `zlib` ile okunuyor (`src/lib/zip-entry.ts`, yeni test). XML varlıkları doğru sırada çözülüyor (`&amp;lt;` artık `<` olmuyor). Eski `.doc` macOS dışında anlaşılır mesaj veriyor.
+  - **Klasör seç düğmesi Windows'ta sessizce hiçbir şey yapmıyordu:** yerel sunucu Windows klasör penceresini açar (`/api/local/folder`; yalnız aynı kaynak + uygulama başlığı).
+  - Tarayıcı otomasyonu, indirilmiş Playwright Chromium yoksa yüklü Edge/Chrome ile açılır.
+  - Next.js 16.4.0 → 16.4.3 (kritik RCE ve DoS güvenlik bültenleri); `npm audit fix` sonrası 0 açık.
+- Testler Windows'ta platforma duyarlı: POSIX dosya izni ve sembolik bağlantı (yönetici/Geliştirici Modu ister) senaryoları yalnız destekleyen sistemde koşar. `workbench-api-qa` artık `/tmp` ve `npm` kabuğuna bağlı değil. CI'ya Windows test işi eklendi.
+- **Windows setup:** `Build-Windows-Setup.cmd` → `windows/build-setup.ps1`: bağımsız (`standalone`) Next sunucusu, gömülü Node (`chloe-node.exe`), C# başlatıcı (`Chloe.exe`) ve Inno Setup ile kullanıcı başına kurulum. Başlatıcı sunucuyu 127.0.0.1:3004'te açar; Edge uygulama penceresi kapanınca sunucuyu durdurur. Paket geliştirme makinesindeki `data/` ve `.env` dosyalarını içermez.
+- Doğrulama (Windows 11, Node 24.22.1): **245/246 birim testi** (kalan test canlı `example.com` erişimi ister; bu ortamda ağ yoktu); Jarvis 15 + anahtar/ses 28 + Codex 15 + Ofis 42 + Atölye 17 API kontrolü hem `next start` hem kurulum paketindeki sunucuyla geçti. Lint, `tsc`, üretim derlemesi temiz. Sessiz kurulum → `Chloe.exe` → sunucu ~4 sn'de hazır → pencere kapanınca sunucu ve başlatıcı kapandı → sessiz kaldırma doğrulandı.
+- Doğrulanmayanlar: gerçek model anahtarıyla canlı sohbet/ses, Windows'ta mikrofonla uçtan uca konuşma, Windows klasör penceresinin elle denenmesi, bu sürümün macOS'ta yeniden derlenmesi (macOS kodu değişmedi; ortak sunucu değişiklikleri platform koşullu).
+- Depo `Chloe-Assistant` adıyla public yapıldı; GitHub Pages tanıtım sayfası `docs/` (varsayılan aydınlık tema, karanlık tema düğmesi, iki temada gerçek ekran görüntüleri).
 
 ## 2026-10-21 — Yeni Jarvis/Deepgram kodu regresyon düzeltmeleri
 

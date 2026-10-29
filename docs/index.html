@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Chloe Assistant: sesli JARVIS asistanı, çok ajanlı Ajan Ofisi ve yerel kod çalışma alanını tek bir yerel öncelikli uygulamada birleştiren kişisel yapay zekâ çalışma alanı. Windows ve macOS.">
+<meta name="color-scheme" content="light dark">
+<meta property="og:title" content="Chloe Assistant — Kişisel yapay zekâ çalışma alanı">
+<meta property="og:description" content="Sesli asistan, ajan ekibi ve kod çalışma alanı. İstediğin modelle, yerel öncelikli ve şifreli anahtar kasasıyla.">
+<meta property="og:image" content="https://berkayatag.github.io/Chloe-Assistant/screens/jarvis-light.jpg">
+<title>Chloe Assistant — Kişisel yapay zekâ çalışma alanı</title>
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="stylesheet" href="site.css?v=0.2.8">
+<script>
+  // Varsayılan aydınlık tema; ziyaretçinin seçimi bu tarayıcıda hatırlanır.
+  // Sayfa boyanmadan önce uygulanır, böylece tema geçişinde yanıp sönme olmaz.
+  (function () {
+    var theme = 'light';
+    try { if (localStorage.getItem('chloe.site.theme') === 'dark') theme = 'dark'; } catch (e) {}
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+</script>
+</head>
+<body>
+<a class="skip" href="#main">İçeriğe geç</a>
+<header class="top">
+  <a class="brand" href="#"><img src="assets/chloe-icon.png" alt="" width="38" height="38"><span>Chloe Assistant<small>by Berkay Atağ</small></span></a>
+  <nav aria-label="Ana menü">
+    <a href="#ozellikler">Özellikler</a>
+    <a href="#ekranlar">Ekranlar</a>
+    <a href="#kurulum">Kurulum</a>
+    <a href="#guvenlik">Güvenlik</a>
+    <a href="https://github.com/BerkayAtag/Chloe-Assistant">GitHub ↗</a>
+  </nav>
+  <button class="theme-toggle" id="theme-toggle" type="button" aria-pressed="false" aria-label="Karanlık temaya geç" title="Karanlık temaya geç">
+    <svg class="icon-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+    <svg class="icon-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+  </button>
+</header>
+
+<main id="main">
+  <section class="hero">
+    <div class="hero-copy">
+      <p class="eyebrow">Sürüm 0.2.8 · Windows &amp; macOS</p>
+      <h1>Kişisel yapay zekâ<br><em>çalışma alanın.</em></h1>
+      <p class="lead">Chloe; sesli JARVIS asistanını, birlikte çalışan bir ajan ekibini ve yerel kod çalışma alanını tek uygulamada toplar. Seçtiğin model sağlayıcısıyla çalışır, anahtarlarını şifreli kasada tutar ve dosya değişikliği ya da komut çalıştırma için her zaman onayını bekler.</p>
+      <div class="actions">
+        <a class="button" href="https://github.com/BerkayAtag/Chloe-Assistant/releases/download/v0.2.8/Chloe.Assistant.Setup-0.2.8.exe">Windows için indir <span aria-hidden="true">↓</span></a>
+        <a class="button ghost" href="#kurulum">macOS kurulumu</a>
+      </div>
+      <ul class="facts">
+        <li>Yerel öncelikli</li>
+        <li>AES-256-GCM anahtar kasası</li>
+        <li>Gemini, OpenAI, Anthropic, Ollama ve uyumlu API'ler</li>
+        <li>Açık onay ilkesi</li>
+      </ul>
+    </div>
+    <figure class="shot">
+      <img src="screens/jarvis-light.jpg" data-light-src="screens/jarvis-light.jpg" data-dark-src="screens/jarvis-dark.jpg" alt="Chloe JARVIS modu: parçacık küresi, mikrofon düğmesi ve iş alanı paneli" width="1440" height="900">
+      <figcaption>JARVIS modu · gerçek uygulama ekranı</figcaption>
+    </figure>
+  </section>
+
+  <section id="ozellikler" class="section">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Ne yapar?</p>
+        <h2>Konuş, yaptır,<br><em>kontrol et.</em></h2>
+      </div>
+      <p>Günlük sohbetten çok adımlı kodlama işlerine kadar her şey aynı yerde. Her ekran, yanıtı hangi bağlantının ve modelin ürettiğini açıkça gösterir; sağlayıcı sessizce değiştirilmez.</p>
+    </div>
+    <div class="features">
+      <article>
+        <span class="num">01</span>
+        <h3>JARVIS sesli asistan</h3>
+        <p>Mikrofona dokun ve konuş. Yanıtlar cümle cümle seslendirilir; Gemini doğal sesi akış hâlinde çalınır. Sessizlik eşiği, otomatik gönderim ve ayrı ses bağlantısı ayarlanabilir.</p>
+      </article>
+      <article>
+        <span class="num">02</span>
+        <h3>Ajan Ofisi</h3>
+        <p>Koordinatör, Araştırmacı, Geliştirici ve Denetçi bir hedef üzerinde birlikte çalışır. Değişiklikler önce denetlenir; reddedilen iş otomatik onaya çevrilmez.</p>
+      </article>
+      <article>
+        <span class="num">03</span>
+        <h3>Chloe Code</h3>
+        <p>Proje klasörünü aç, dosyaları gez ve düzenle, modelden değişiklik önerisi al. Test, lint ve derleme komutları süre ve çıktı sınırlarıyla çalışır.</p>
+      </article>
+      <article>
+        <span class="num">04</span>
+        <h3>Çalışma atölyesi</h3>
+        <p>Web sitesi araştırması, yerel proje analizi, kalıcı hafıza bankası ve ses stüdyosu. Kaynaklar ve erişim tarihleri raporda kalır.</p>
+      </article>
+      <article>
+        <span class="num">05</span>
+        <h3>İstediğin model</h3>
+        <p>Gemini, OpenAI, Anthropic, Ollama, FreeLLMAPI ve OpenAI uyumlu özel uç noktalar. Sohbet, hızlı sesli tur ve ses sentezi için ayrı bağlantılar seçilebilir.</p>
+      </article>
+      <article>
+        <span class="num">06</span>
+        <h3>E-posta ve takvim</h3>
+        <p>Google ve Microsoft hesaplarını OAuth ile bağla; gelen kutusu ve takvim özetlenir. E-posta gönderimi yalnızca açık onayınla yapılır.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="ekranlar" class="section gallery">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Ekranlar</p>
+        <h2>Aydınlık ya da karanlık,<br><em>aynı sadelik.</em></h2>
+      </div>
+      <p>Uygulama beyaz, karanlık ve siyah temalarla gelir. Bu sayfadaki görüntüler sağ üstteki tema düğmesine göre değişir.</p>
+    </div>
+    <div class="tabs" role="tablist" aria-label="Ekran seç">
+      <button type="button" role="tab" id="tab-main" aria-controls="panel-main" aria-selected="true">Sohbet</button>
+      <button type="button" role="tab" id="tab-office" aria-controls="panel-office" aria-selected="false" tabindex="-1">Ajan Ofisi</button>
+      <button type="button" role="tab" id="tab-jarvis" aria-controls="panel-jarvis" aria-selected="false" tabindex="-1">JARVIS</button>
+    </div>
+    <figure class="shot" role="tabpanel" id="panel-main" aria-labelledby="tab-main">
+      <img src="screens/main-light.jpg" data-light-src="screens/main-light.jpg" data-dark-src="screens/main-dark.jpg" alt="Chloe ana sohbet ekranı: kenar çubuğunda projeler ve konuşmalar, ortada Chloe karşılama mesajı" width="1440" height="900" loading="lazy">
+    </figure>
+    <figure class="shot" role="tabpanel" id="panel-office" aria-labelledby="tab-office" hidden>
+      <img src="screens/office-light.jpg" data-light-src="screens/office-light.jpg" data-dark-src="screens/office-dark.jpg" alt="Ajan Ofisi: ekip hedefi, proje klasörü ve çalışma atölyesi sekmeleri" width="1440" height="900" loading="lazy">
+    </figure>
+    <figure class="shot" role="tabpanel" id="panel-jarvis" aria-labelledby="tab-jarvis" hidden>
+      <img src="screens/jarvis-light.jpg" data-light-src="screens/jarvis-light.jpg" data-dark-src="screens/jarvis-dark.jpg" alt="JARVIS sesli asistan ekranı" width="1440" height="900" loading="lazy">
+    </figure>
+  </section>
+
+  <section id="kurulum" class="section">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Kurulum</p>
+        <h2>Birkaç dakikada<br><em>hazır.</em></h2>
+      </div>
+      <p>Chloe bilgisayarında <code>127.0.0.1:3004</code> adresinde çalışan yerel bir sunucu ve onun penceresinden oluşur. İlk açılışta Ayarlar'dan bir model bağlantısı ekle.</p>
+    </div>
+    <div class="install">
+      <article>
+        <h3>Windows <span class="badge">10 / 11 · x64</span></h3>
+        <ol>
+          <li><strong>Chloe.Assistant.Setup-0.2.8.exe</strong> dosyasını indir ve çalıştır. Yönetici izni gerekmez.</li>
+          <li>Başlat menüsünden <strong>Chloe Assistant</strong>'ı aç. Uygulama kendi penceresinde (Edge uygulama penceresi) açılır.</li>
+          <li>Pencereyi kapattığında yerel sunucu da kapanır.</li>
+        </ol>
+        <a class="button" href="https://github.com/BerkayAtag/Chloe-Assistant/releases/download/v0.2.8/Chloe.Assistant.Setup-0.2.8.exe">Setup'ı indir <span aria-hidden="true">↓</span></a>
+      </article>
+      <article>
+        <h3>macOS <span class="badge">15+</span></h3>
+        <ol>
+          <li>Node.js 22+ ve Apple Command Line Tools'u kur (<code>xcode-select --install</code>).</li>
+          <li><strong>macOS ZIP</strong> paketini kalıcı bir klasöre çıkar.</li>
+          <li><strong>Install Chloe.command</strong> dosyasını çift tıkla; uygulama <code>/Applications/Chloe.app</code> olarak kurulur.</li>
+        </ol>
+        <a class="button ghost" href="https://github.com/BerkayAtag/Chloe-Assistant/releases/download/v0.2.8/Chloe-Assistant-0.2.8-macOS.zip">macOS paketini indir <span aria-hidden="true">↓</span></a>
+      </article>
+      <article>
+        <h3>Kaynak koddan</h3>
+        <ol>
+          <li><code>git clone https://github.com/BerkayAtag/Chloe-Assistant.git</code></li>
+          <li><code>npm ci</code>, ardından <code>npm run dev</code></li>
+          <li>Windows setup üretmek için <code>Build-Windows-Setup.cmd</code> (Inno Setup 6 gerekir).</li>
+        </ol>
+        <a class="button ghost" href="https://github.com/BerkayAtag/Chloe-Assistant#readme">Belgeleri incele →</a>
+      </article>
+    </div>
+  </section>
+
+  <section id="guvenlik" class="section">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Gizlilik &amp; güvenlik</p>
+        <h2>Verin senin<br><em>bilgisayarında.</em></h2>
+      </div>
+      <p>Mesajların ve seçtiğin dosya bağlamı yalnızca yapılandırdığın model sağlayıcısına gider. Aşağıdaki sınırlar da bilinçli olarak açıkça yazılmıştır.</p>
+    </div>
+    <div class="notes">
+      <div><h3>Şifreli anahtar kasası</h3><p>API anahtarları diskte AES-256-GCM ile saklanır, bozulmaya karşı yedeklenir ve hiçbir pakete dahil edilmez.</p></div>
+      <div><h3>Yalnız yerel erişim</h3><p>Sunucu yalnız <code>127.0.0.1</code> dinler; Origin ve Fetch Metadata kontrolleri başka sitelerin isteklerini reddeder. Bu bir kimlik doğrulama değildir; sunucuyu internete açma.</p></div>
+      <div><h3>SSRF koruması</h3><p>Tarayıcı ve araştırma araçları yerel ağ, loopback ve bulut meta veri adreslerine erişemez.</p></div>
+      <div><h3>Açık onay</h3><p>Dosya değişikliği, proje komutu ve e-posta gönderimi senin onayın olmadan çalışmaz. Onaylanan komutlar hesabının yetkileriyle çalışır; bir işletim sistemi korumalı alanı değildir.</p></div>
+      <div><h3>Windows sürümü</h3><p>Bilgisayar yönetimi komutları ve macOS sistem sesleri yalnız macOS uygulamasında bulunur. Windows'ta konuşma tanıma ve seslendirme Edge'in yerleşik hizmetlerini veya seçtiğin ses API'sini kullanır.</p></div>
+      <div><h3>Dürüst sınırlar</h3><p>Canlı model yanıtları deterministik değildir ve sağlayıcı kotası ya da gecikmesi Chloe'nin denetiminde değildir. Sıfır hata veya sıfır güvenlik açığı garantisi verilmez.</p></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span>© 2026 Berkay Atağ · Chloe Assistant</span>
+  <span><a href="https://github.com/BerkayAtag/Chloe-Assistant/releases">Tüm sürümler</a> · <a href="https://github.com/BerkayAtag/Chloe-Assistant/blob/main/THIRD_PARTY_NOTICES.md">Üçüncü taraf lisansları</a></span>
+</footer>
+
+<script>
+  (function () {
+    var root = document.documentElement;
+    var button = document.getElementById('theme-toggle');
+
+    function apply(theme) {
+      var dark = theme === 'dark';
+      root.setAttribute('data-theme', theme);
+      var label = dark ? 'Aydınlık temaya geç' : 'Karanlık temaya geç';
+      button.setAttribute('aria-pressed', String(dark));
+      button.setAttribute('aria-label', label);
+      button.setAttribute('title', label);
+      // Ekran görüntüleri seçilen temaya göre değişir.
+      var mode = dark ? 'dark' : 'light';
+      document.querySelectorAll('img[data-light-src]').forEach(function (img) {
+        var src = img.getAttribute('data-' + mode + '-src');
+        if (img.getAttribute('src') !== src) img.setAttribute('src', src);
+      });
+    }
+
+    apply(root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light');
+    button.addEventListener('click', function () {
+      var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      apply(next);
+      try { localStorage.setItem('chloe.site.theme', next); } catch (e) {}
+    });
+
+    // Ekran sekmeleri: tıklama ve ok tuşlarıyla gezinme.
+    var tabs = Array.prototype.slice.call(document.querySelectorAll('[role="tab"]'));
+    function select(tab) {
+      tabs.forEach(function (other) {
+        var active = other === tab;
+        other.setAttribute('aria-selected', String(active));
+        other.tabIndex = active ? 0 : -1;
+        document.getElementById(other.getAttribute('aria-controls')).hidden = !active;
+      });
+      tab.focus();
+    }
+    tabs.forEach(function (tab, index) {
+      tab.addEventListener('click', function () { select(tab); });
+      tab.addEventListener('keydown', function (event) {
+        if (event.key === 'ArrowRight') select(tabs[(index + 1) % tabs.length]);
+        if (event.key === 'ArrowLeft') select(tabs[(index - 1 + tabs.length) % tabs.length]);
+      });
+    });
+  })();
+</script>
+</body>
+</html>

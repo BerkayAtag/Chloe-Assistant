@@ -4,6 +4,7 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import path from 'node:path';
 import { NextResponse } from 'next/server';
+import { readZipEntry } from '@/lib/zip-entry';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/jpeg', 'image/png', 'image/webp', 'image/gif']);
@@ -20,16 +21,17 @@ async function extractText(filePath: string, mimeType: string): Promise<string> 
       } finally { await parser.destroy(); }
     }
     if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-      const { stdout } = await execFileAsync('unzip', ['-p', filePath, 'word/document.xml'], { maxBuffer: 2 * 1024 * 1024, timeout: 15000 });
+      const stdout = readZipEntry(await readFile(filePath), 'word/document.xml', 8 * 1024 * 1024).toString('utf8');
       return stdout
         .replace(/<w:tab\s*\/?>/giu, '\t')
         .replace(/<w:br\s*\/?>/giu, '\n')
         .replace(/<\/w:p>/giu, '\n')
         .replace(/<[^>]+>/gu, '')
-        .replace(/&amp;/gu, '&').replace(/&lt;/gu, '<').replace(/&gt;/gu, '>')
+        .replace(/&lt;/gu, '<').replace(/&gt;/gu, '>').replace(/&quot;/gu, '"').replace(/&apos;/gu, "'").replace(/&amp;/gu, '&')
         .replace(/\s+\n/gu, '\n').trim().slice(0, 120_000);
     }
     if (mimeType === 'application/msword') {
+      if (process.platform !== 'darwin') throw new Error('Eski .doc biçimi yalnız macOS üzerinde okunabiliyor; belgeyi .docx olarak kaydedip yükle.');
       const { stdout } = await execFileAsync('textutil', ['-convert', 'txt', '-stdout', filePath], { maxBuffer: 2 * 1024 * 1024, timeout: 15000 });
       return stdout.trim().slice(0, 120_000);
     }

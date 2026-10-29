@@ -3,6 +3,12 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   /* config options here */
   distDir: process.env.NEXT_DIST_DIR || '.next',
+  // The Windows installer ships the self-contained server; macOS keeps `next start`.
+  ...(process.env.CHLOE_STANDALONE === '1' ? {
+    output: 'standalone' as const,
+    // cwd-relative data paths make the tracer copy the whole checkout; ship code only.
+    outputFileTracingExcludes: { '/*': ['.git/**', 'data/**', 'macos/**', 'docs/**', 'script/**', 'windows/**', 'dist/**'] },
+  } : {}),
   cacheComponents: true,
   serverExternalPackages: ['pdf-parse', 'pdfjs-dist'],
   // File uploads accept 50 MB plus multipart overhead. Keep the proxy buffer

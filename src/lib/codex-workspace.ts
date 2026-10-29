@@ -104,7 +104,8 @@ export function resolveTarget(root: string, relative: string, allowMissing: bool
 // that spelling only inside this root; resolveTarget still checks every segment.
 export function agentWorkspacePath(root: string, input: string, directory = false): string {
   if (typeof input !== 'string' || input.length > 4096 || input.includes('\0')) throw new WorkspaceError('Dosya yolu geçersiz.');
-  const relative = path.isAbsolute(input) ? path.relative(root, input) : input;
+  // Agents and the editor exchange '/'-separated paths; path.relative yields '\' on Windows.
+  const relative = (path.isAbsolute(input) ? path.relative(root, input) : input).split(path.sep).join('/');
   if (directory && (relative === '' || relative === '.')) return '';
   resolveTarget(root, relative, true);
   return relative;
