@@ -1,0 +1,6 @@
+# Windows build scripts need CRLF; everything else follows the repo default.
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.iss text eol=crlf
+*.command text eol=lf
+*.sh text eol=lf
