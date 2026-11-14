@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 
 export const MAX_WORKSPACE_FILE_SIZE = 120_000;
 const MAX_TREE_ENTRIES = 500;
@@ -45,8 +46,9 @@ export function resolveWorkspaceRoot(input: string): string {
   } catch {
     throw new WorkspaceError('Proje klasörü okunamıyor.');
   }
-  const home = process.env.HOME ? path.resolve(process.env.HOME) : '';
-  if (!stat.isDirectory() || root === path.parse(root).root || (home && root === home)) {
+  const home = fs.realpathSync(os.homedir());
+  const samePath = (a: string, b: string) => process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+  if (!stat.isDirectory() || samePath(root, path.parse(root).root) || samePath(root, home)) {
     throw new WorkspaceError('Güvenlik için kök dizin veya kullanıcı ana klasörü yerine belirli bir proje klasörü seç.');
   }
   return root;
@@ -74,6 +76,12 @@ export function resolveTarget(root: string, relative: string, allowMissing: bool
   const segments = relative.split(/[\\/]/u);
   if (segments.some((segment) => !segment || segment === '.' || segment === '..' || segment.includes('\0'))) {
     throw new WorkspaceError('Dosya yolu proje klasörünün dışında.');
+  }
+  // Reject alternate data streams, device names and normalized path aliases.
+  if (process.platform === 'win32' && segments.some((segment) =>
+    /[<>:"|?*\x00-\x1f]/u.test(segment) || /[. ]$/u.test(segment) ||
+    /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/iu.test(segment))) {
+    throw new WorkspaceError('Windows dosya adı geçersiz.', 403);
   }
   if (excludedPath(relative)) throw new WorkspaceError('Gizli yapılandırma, kimlik bilgisi veya üretilmiş dosyalara bu ekrandan erişilemiyor.', 403);
 

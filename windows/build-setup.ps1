@@ -8,7 +8,7 @@ Set-Location $root
 $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
 # Outside the checkout: Node would otherwise resolve modules the bundle lacks from
 # the repo's own node_modules, hiding missing files until a real install.
-$stage = Join-Path $env:TEMP 'ChloeSetupStage'
+$stage = Join-Path $env:TEMP ("ChloeSetupStage-" + [guid]::NewGuid().ToString('N'))
 $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe", "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe") |
   Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $iscc) { throw 'Inno Setup 6 bulunamadı: https://jrsoftware.org/isinfo.php' }
@@ -18,13 +18,14 @@ $node = (Get-Command node).Source
 
 Write-Host "Chloe ${version}: bağımsız sunucu derleniyor..."
 $env:CHLOE_STANDALONE = '1'; $env:NEXT_DIST_DIR = '.next-win'; $env:NEXT_TELEMETRY_DISABLED = '1'
-if (Test-Path .next-win) { Remove-Item .next-win -Recurse -Force }
+$buildPath = [IO.Path]::GetFullPath((Join-Path $root '.next-win'))
+if ((Split-Path $buildPath -Parent) -ne $root) { throw 'Geçersiz derleme yolu.' }
+if (Test-Path -LiteralPath $buildPath) { Remove-Item -LiteralPath $buildPath -Recurse -Force }
 & $node node_modules\next\dist\bin\next build
 if ($LASTEXITCODE -ne 0) { throw 'next build başarısız.' }
 Remove-Item Env:CHLOE_STANDALONE, Env:NEXT_DIST_DIR
 
 Write-Host 'Kurulum klasörü hazırlanıyor...'
-if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Force "$stage\app", "$stage\runtime" | Out-Null
 # robocopy: Copy-Item treats [ ] in Turbopack chunk names as wildcards and skips them.
 function Copy-Tree($from, $to) { robocopy $from $to /E /NFL /NDL /NJH /NJS /NP | Out-Null; if ($LASTEXITCODE -ge 8) { throw "Kopyalama başarısız: $from" } }
@@ -41,13 +42,13 @@ Set-Content "$stage\runtime\NODE-LICENSE.txt" -Encoding utf8 -Value "Node.js $(&
 $versionSource = Join-Path $env:TEMP 'ChloeVersion.cs'
 Set-Content $versionSource -Encoding utf8 -Value "static class ChloeVersion { public const string Value = `"$version.0`"; }"
 # /codepage:65001 keeps Turkish messages and the publisher name intact.
-& $csc /nologo /codepage:65001 /target:winexe /optimize+ "/win32icon:$stage\Chloe.ico" /r:System.Windows.Forms.dll "/out:$stage\Chloe.exe" windows\ChloeLauncher.cs $versionSource
+& $csc /nologo /codepage:65001 /target:winexe /optimize+ "/win32icon:$stage\Chloe.ico" /r:System.Windows.Forms.dll /r:System.Management.dll "/out:$stage\Chloe.exe" windows\ChloeLauncher.cs $versionSource
 if ($LASTEXITCODE -ne 0) { throw 'Başlatıcı derlenemedi.' }
 
 Write-Host 'Paketlenmiş sunucu deneniyor...'
 # Gerçek kurulum gibi çalıştırılır; geçici veri klasörleri kullanıcının kasasına dokunmaz.
 $smoke = Join-Path $env:TEMP "ChloeSetupSmoke-$PID"
-$vars = @{ PORT = '3099'; HOSTNAME = '127.0.0.1'; NODE_ENV = 'production'; CHLOE_CONNECTION_DIR = "$smoke\conn"; CHLOE_OAUTH_DIR = "$smoke\oauth"; CHLOE_OFFICE_DIR = "$smoke\office"; CHLOE_MEMORY_DIR = "$smoke\memory" }
+$vars = @{ PORT = '3099'; HOSTNAME = '127.0.0.1'; NODE_ENV = 'production'; CHLOE_DATA_DIR = "$smoke\data"; CHLOE_CONNECTION_DIR = "$smoke\conn"; CHLOE_OAUTH_DIR = "$smoke\oauth"; CHLOE_OFFICE_DIR = "$smoke\office"; CHLOE_MEMORY_DIR = "$smoke\memory" }
 foreach ($k in $vars.Keys) { Set-Item "Env:$k" $vars[$k] }
 $log = Join-Path $env:TEMP 'ChloeSetupSmoke.log'
 $server = Start-Process "$stage\runtime\chloe-node.exe" -ArgumentList 'server.js' -WorkingDirectory "$stage\app" -WindowStyle Hidden -PassThru -RedirectStandardOutput $log -RedirectStandardError "$log.err"
@@ -69,7 +70,10 @@ try {
 } finally {
   Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
   Start-Sleep -Milliseconds 500
-  Remove-Item $smoke -Recurse -Force -ErrorAction SilentlyContinue
+  $smokePath = [IO.Path]::GetFullPath($smoke)
+  if ((Split-Path $smokePath -Parent) -eq [IO.Path]::GetFullPath($env:TEMP).TrimEnd('\')) {
+    Remove-Item -LiteralPath $smokePath -Recurse -Force -ErrorAction SilentlyContinue
+  }
 }
 # Deneme ve geliştirme makinesindeki kişisel veriler hiçbir zaman pakete girmez.
 foreach ($private in 'data', '.env', '.env.local') { if (Test-Path "$stage\app\$private") { Remove-Item "$stage\app\$private" -Recurse -Force } }
@@ -82,3 +86,11 @@ $setup = Join-Path $root "dist\windows\Chloe.Assistant.Setup-$version.exe"
 $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
 Set-Content (Join-Path $root 'dist\windows\SHA256SUMS.txt') -Encoding ascii -Value "$hash  Chloe.Assistant.Setup-$version.exe"
 Write-Host "Hazır: $setup"
+
+# Portable local server, including the exact Node runtime used in the smoke test.
+Copy-Item windows\Start-Server.cmd "$stage\Start-Server.cmd"
+$archive = Join-Path $root "dist\windows\Chloe.Server-$version-win-x64.zip"
+tar.exe -a -c -f $archive -C $stage .
+if ($LASTEXITCODE -ne 0) { throw 'Sunucu ZIP oluşturulamadı.' }
+$zipHash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLower()
+Add-Content (Join-Path $root 'dist\windows\SHA256SUMS.txt') -Encoding ascii -Value "$zipHash  Chloe.Server-$version-win-x64.zip"

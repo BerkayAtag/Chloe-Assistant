@@ -88,6 +88,14 @@ test('command: ac', () => {
 });
 
 // English variants
+test('Turkish letters and stop commands retain their intended meaning', () => {
+  assert.equal(parseCommand('Aç Hesap Makinesi').intent, 'open_app');
+  assert.equal(parseCommand('İstanbul araştır').entities.query, 'i̇stanbul');
+  assert.equal(parseCommand('Ajan ekibini durdur').intent, 'team_stop');
+  assert.equal(parseCommand('Dikte bitir').intent, 'dictation_stop');
+  assert.equal(parseCommand('kanal').intent, 'unknown');
+});
+
 test('command: open YouTube', () => {
   const result = parseCommand('open YouTube');
   assert.equal(result.intent, 'open_app');

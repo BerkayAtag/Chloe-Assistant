@@ -36,7 +36,8 @@ static class ChloeLauncher
                 if (WaitForChloe(60)) OpenWindow(DataRoot());
                 return 0;
             }
-            return Run(mutex);
+            try { return Run(); }
+            catch (Exception error) { Fail("Chloe başlatılamadı: " + error.Message); return 1; }
         }
     }
 
@@ -47,7 +48,7 @@ static class ChloeLauncher
         return root;
     }
 
-    static int Run(Mutex mutex)
+    static int Run()
     {
         var installDir = AppDomain.CurrentDomain.BaseDirectory;
         var appDir = Path.Combine(installDir, "app");
@@ -101,15 +102,42 @@ static class ChloeLauncher
         }
 
         var window = OpenWindow(dataRoot);
-        mutex.ReleaseMutex();
+        // Keep ownership until the original app window closes. Releasing it here
+        // lets another launcher become an owner while this one still owns the server.
         // Without a dedicated app window (no Edge/Chrome) the server keeps running
         // for the default browser and is reused on the next launch.
         if (server != null && window != null)
         {
             window.WaitForExit();
+            // Chromium may hand the app to an existing process. Wait for all
+            // windows in our dedicated profile before stopping our server.
+            WaitForProfileWindows(dataRoot);
             StopTree(server);
         }
         return 0;
+    }
+
+    static void WaitForProfileWindows(string dataRoot)
+    {
+        var profile = Path.Combine(dataRoot, "window-profile");
+        while (true)
+        {
+            bool active = false;
+            using (var search = new System.Management.ManagementObjectSearcher(
+                "SELECT CommandLine FROM Win32_Process WHERE Name='msedge.exe' OR Name='chrome.exe'"))
+            using (var processes = search.Get())
+            {
+                foreach (System.Management.ManagementObject process in processes)
+                using (process)
+                {
+                    var command = process["CommandLine"] as string;
+                    if (command != null && command.IndexOf(profile, StringComparison.OrdinalIgnoreCase) >= 0 &&
+                        command.IndexOf("--type=", StringComparison.OrdinalIgnoreCase) < 0) active = true;
+                }
+            }
+            if (!active) return;
+            Thread.Sleep(500);
+        }
     }
 
     static Process OpenWindow(string dataRoot)
@@ -118,7 +146,7 @@ static class ChloeLauncher
         if (browser != null)
         {
             var profile = Path.Combine(dataRoot, "window-profile");
-            var args = "--app=" + Url + " --user-data-dir=\"" + profile + "\" --no-first-run --no-default-browser-check --window-size=1440,920";
+            var args = "--app=" + Url + " --user-data-dir=\"" + profile + "\" --no-first-run --disable-background-mode --no-default-browser-check --window-size=1440,920";
             try { return Process.Start(new ProcessStartInfo(browser, args) { UseShellExecute = false }); }
             catch { /* fall back to the default browser */ }
         }

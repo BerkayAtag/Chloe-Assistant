@@ -114,6 +114,7 @@ export async function POST(request: Request) {
             npm_config_fund: 'false',
           },
           shell: false,
+          windowsHide: true,
           detached: process.platform !== 'win32',
           stdio: 'pipe',
         });
@@ -122,7 +123,7 @@ export async function POST(request: Request) {
         const stop = () => {
           if (child.pid && process.platform !== 'win32') terminateGroup(child.pid, 'SIGTERM');
           // Windows has no process groups; taskkill /T also ends npm's child processes.
-          else if (child.pid && child.exitCode === null) spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' }).once('error', () => child.kill());
+          else if (child.pid && child.exitCode === null) spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }).once('error', () => child.kill());
           escalation ||= setTimeout(() => {
             if (child.pid && process.platform !== 'win32') terminateGroup(child.pid, 'SIGKILL');
             else if (child.exitCode === null) child.kill('SIGKILL');
@@ -169,7 +170,7 @@ export async function POST(request: Request) {
       });
       return NextResponse.json({
         ...result,
-        success: result.exitCode === 0 && !result.timedOut && !request.signal.aborted,
+        success: result.exitCode === 0 && !result.timedOut && !result.truncated && !request.signal.aborted,
       });
     } finally {
       runningWorkspaces.delete(root);
