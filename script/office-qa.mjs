@@ -127,6 +127,8 @@ try {
   check('Codex rejects stale editor context', (await api({ action: 'start', prompt: 'QA Codex stale', workspace: folder, focusFile: 'note.txt', expectedHash: '0'.repeat(64) })).status === 400);
   const focus = await api({ action: 'start', prompt: 'QA Codex team handoff', workspace: folder, focusFile: 'note.txt', expectedHash: hash, webSearch: false });
   if (focus.run?.id) ids.push(focus.run.id);
+  assert.equal(focus.status, 202, JSON.stringify({ status: focus.status, error: focus.error }));
+  assert.equal(focus.run.workspace, await fs.realpath(folder), 'Resolved workspace differs from the requested project');
   check('Codex hands off the exact workspace and file', focus.status === 202 && focus.run.focusFile === 'note.txt' && focus.run.workspace === await fs.realpath(folder));
   const fileRun = await settled(focus.run.id);
   check('file tool produces proposal', fileRun.status === 'completed' && fileRun.artifacts.length === 1);

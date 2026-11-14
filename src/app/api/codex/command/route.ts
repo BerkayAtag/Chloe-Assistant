@@ -134,13 +134,22 @@ export async function POST(request: Request) {
         });
         child.stdin.end();
         let escalation: ReturnType<typeof setTimeout> | undefined;
+        let stopping = false;
         const stop = () => {
+          if (stopping) return;
+          stopping = true;
           if (child.pid && process.platform !== 'win32') terminateGroup(child.pid, 'SIGTERM');
           // Windows has no process groups; taskkill /T also ends npm's child processes.
-          else if (child.pid && child.exitCode === null) spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }).once('error', () => child.kill());
+          // Never kill npm separately while taskkill is enumerating descendants:
+          // doing so can orphan cmd.exe/node children and leave their pipes open.
+          else if (child.pid && child.exitCode === null) {
+            spawn(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe'),
+              ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
+              .once('error', () => child.kill());
+            return;
+          }
           escalation ||= setTimeout(() => {
             if (child.pid && process.platform !== 'win32') terminateGroup(child.pid, 'SIGKILL');
-            else if (child.exitCode === null) child.kill('SIGKILL');
           }, 2000);
           escalation.unref();
         };
