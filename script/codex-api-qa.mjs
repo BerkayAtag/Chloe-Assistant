@@ -29,7 +29,7 @@ await new Promise((resolve) => model.listen(0, '127.0.0.1', resolve));
 try {
   await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ scripts: {
     test: 'node -e "console.log(\'CODEX_API_OK\')"',
-    'test:wait': 'node -e "process.on(\'SIGTERM\',()=>{});setInterval(()=>{},1000)"',
+    'test:wait': 'node -e "require(\'fs\').writeFileSync(\'wait.pid\',String(process.pid));process.on(\'SIGTERM\',()=>{});setInterval(()=>{},1000)"',
   } }));
   const list = await post('/api/codex/workspace', { action: 'list', workspace: root });
   check('workspace opened', list.status === 200 && list.entries.some((entry) => entry.path === 'package.json'));
@@ -48,9 +48,16 @@ try {
   const controller = new AbortController();
   const runId = crypto.randomUUID();
   const pending = post('/api/codex/command', { task: 'test:wait', workspace: root, runId }, controller.signal).catch(() => null);
-  await new Promise((resolve) => setTimeout(resolve, 500));
+  let childPid;
+  for (let i = 0; i < 40; i++) {
+    try { childPid = Number(await fs.readFile(path.join(root, 'wait.pid'), 'utf8')); break; } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  assert.ok(childPid > 0, 'The long-running child must start before testing cancellation');
   check('explicit cancellation accepted', (await post('/api/codex/command', { task: 'cancel', workspace: root, runId })).cancelled);
   controller.abort(); await pending;
+  assert.throws(() => process.kill(childPid, 0), { code: 'ESRCH' });
+  check('cancelled npm descendant no longer exists', true);
   let stopped = false;
   for (let i = 0; i < 20; i++) {
     await new Promise((resolve) => setTimeout(resolve, 250));

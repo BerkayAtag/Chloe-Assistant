@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
@@ -52,6 +52,7 @@ after(() => {
 });
 
 test('workspace listing excludes credentials, dependencies, and symbolic links', () => {
+  assert.equal(resolveWorkspaceRoot(workspace), realpathSync.native(workspace));
   const result = listWorkspaceEntries(workspace);
   const paths = result.entries.map((entry) => entry.path);
   assert.ok(paths.includes('src/app.ts'));

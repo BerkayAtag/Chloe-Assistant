@@ -36,7 +36,8 @@ export function resolveWorkspaceRoot(input: string): string {
   }
   let root: string;
   try {
-    root = fs.realpathSync(input.trim());
+    // Native resolution expands Windows 8.3 aliases for a stable project identity.
+    root = fs.realpathSync.native(input.trim());
   } catch {
     throw new WorkspaceError('Proje klasörü bulunamadı veya erişilemiyor.');
   }
@@ -46,7 +47,7 @@ export function resolveWorkspaceRoot(input: string): string {
   } catch {
     throw new WorkspaceError('Proje klasörü okunamıyor.');
   }
-  const home = fs.realpathSync(os.homedir());
+  const home = fs.realpathSync.native(os.homedir());
   const samePath = (a: string, b: string) => process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
   if (!stat.isDirectory() || samePath(root, path.parse(root).root) || samePath(root, home)) {
     throw new WorkspaceError('Güvenlik için kök dizin veya kullanıcı ana klasörü yerine belirli bir proje klasörü seç.');
