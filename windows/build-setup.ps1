@@ -47,7 +47,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Başlatıcı derlenemedi.' }
 
 Write-Host 'Paketlenmiş sunucu deneniyor...'
 # Gerçek kurulum gibi çalıştırılır; geçici veri klasörleri kullanıcının kasasına dokunmaz.
-$smoke = Join-Path $env:TEMP "ChloeSetupSmoke-$PID"
+$smoke = Join-Path $env:TEMP "chloe-workbench-qa.$PID"
 $vars = @{ PORT = '3099'; HOSTNAME = '127.0.0.1'; NODE_ENV = 'production'; CHLOE_DATA_DIR = "$smoke\data"; CHLOE_CONNECTION_DIR = "$smoke\conn"; CHLOE_OAUTH_DIR = "$smoke\oauth"; CHLOE_OFFICE_DIR = "$smoke\office"; CHLOE_MEMORY_DIR = "$smoke\memory" }
 foreach ($k in $vars.Keys) { Set-Item "Env:$k" $vars[$k] }
 $log = Join-Path $env:TEMP 'ChloeSetupSmoke.log'
@@ -69,12 +69,13 @@ try {
   if ($failures) { throw ("Paket denemesi başarısız:`n" + ($failures -join "`n")) }
   $env:CHLOE_TEST_URL = $base
   $env:CHLOE_OFFICE_DIR = "$smoke\office"
+  $env:CHLOE_MEMORY_DIR = "$smoke\memory"
   try {
     foreach ($suite in 'jarvis-api-qa', 'jarvis-key-qa', 'codex-api-qa', 'workbench-api-qa', 'office-qa') {
       & $node (Join-Path $root "script\$suite.mjs")
       if ($LASTEXITCODE -ne 0) { throw "API doğrulaması başarısız: $suite" }
     }
-  } finally { Remove-Item Env:CHLOE_TEST_URL, Env:CHLOE_OFFICE_DIR -ErrorAction SilentlyContinue }
+  } finally { Remove-Item Env:CHLOE_TEST_URL, Env:CHLOE_OFFICE_DIR, Env:CHLOE_MEMORY_DIR -ErrorAction SilentlyContinue }
 } finally {
   Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
   Start-Sleep -Milliseconds 500

@@ -94,11 +94,14 @@ export default function CodeWorkspace({ settings, onClose, onOpenSettings, onOpe
     const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(timeout)]);
     const command = url === '/api/codex/command' ? body as { task: string; workspace: string } : null;
     const runId = command && command.task !== 'list' ? crypto.randomUUID() : '';
+    let cancellation: Promise<string> = Promise.resolve('');
     const cancelCommand = () => {
-      if (runId && command) void fetch('/api/codex/command', {
+      if (runId && command) cancellation = fetch('/api/codex/command', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
         body: JSON.stringify({ task: 'cancel', workspace: command.workspace, runId }),
-      }).catch(() => { /* The server also enforces its hard timeout. */ });
+        signal: AbortSignal.timeout(10_000),
+      }).then((response) => response.ok ? '' : 'Durdurma sunucu tarafından doğrulanamadı.')
+        .catch(() => 'Sunucuya ulaşılamadı; komut en geç 120 saniyelik sınırda durdurulur.');
     };
     signal.addEventListener('abort', cancelCommand, { once: true });
     try {
@@ -112,6 +115,10 @@ export default function CodeWorkspace({ settings, onClose, onOpenSettings, onOpe
     if (!response.ok) throw new Error(data.error || `İstek başarısız oldu (${response.status}).`);
     return data;
     } catch (error) {
+      if (signal.aborted) {
+        const cancellationError = await cancellation;
+        if (cancellationError) throw new Error(cancellationError);
+      }
       if (controller.signal.aborted) throw new Error('İşlem durduruldu. Çalışmış proje komutlarının etkileri otomatik geri alınmaz.');
       throw error;
     } finally {

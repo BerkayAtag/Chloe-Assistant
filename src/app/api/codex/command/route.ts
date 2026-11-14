@@ -16,7 +16,7 @@ interface RunnableTask {
 }
 
 const runningWorkspaces = new Set<string>();
-const runningCommands = new Map<string, { runId: string; cancel: () => void }>();
+const runningCommands = new Map<string, { runId: string; cancel: () => Promise<void> }>();
 const cancelledRuns = new Map<string, number>();
 const MAX_OUTPUT_BYTES = 160_000;
 const TIMEOUT_MS = 120_000;
@@ -90,7 +90,7 @@ export async function POST(request: Request) {
       if (cancelledRuns.size >= 500) cancelledRuns.delete(cancelledRuns.keys().next().value!);
       cancelledRuns.set(runId, Date.now() + TIMEOUT_MS + 10_000);
       const running = runningCommands.get(root);
-      if (running?.runId === runId) running.cancel();
+      if (running?.runId === runId) await running.cancel();
       return NextResponse.json({ cancelled: true });
     }
     if (runId && cancelledRuns.has(runId)) return NextResponse.json({ error: 'İşlem iptal edildi.' }, { status: 409 });
@@ -166,7 +166,12 @@ export async function POST(request: Request) {
           stop();
         }, TIMEOUT_MS);
         const abort = stop;
-        runningCommands.set(root, { runId, cancel: () => { cancelled = true; stop(); } });
+        runningCommands.set(root, { runId, cancel: () => new Promise<void>((done) => {
+          cancelled = true;
+          child.once('close', () => done());
+          child.once('error', () => done());
+          stop();
+        }) });
         child.once('error', (error) => {
           clearTimeout(timeout);
           clearTimeout(escalation);
