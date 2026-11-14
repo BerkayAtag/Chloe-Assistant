@@ -1,3 +1,15 @@
+## v0.3.1 — Windows stability and verified server packages
+
+- Fixed Windows launcher ownership across repeated launches and browser process handoff.
+- Blocked Windows device names, alternate streams and normalized path aliases in project access; protected the actual Windows home directory and normalized 8.3 aliases for stable project identities.
+- Added explicit, per-run project command cancellation so browser cancellation does not leave processes or workspace locks behind.
+- Corrected Turkish command matching and stop/start precedence.
+- Rejected malformed stored ZIP sizes and invalid conversation titles before they can damage user workflows.
+- Updated Hono runtime dependencies and pinned the TypeScript ESLint minimatch transitive dependency to the patched major; lint, build and npm audit validated (zero known audit findings).
+- Added Windows CI for standalone server smoke/API tests, setup install/upgrade/uninstall and data preservation; portable server ZIP includes Node.js and Start-Server.cmd.
+- Preserved the promotion page design and refreshed download links.
+- Validation: 252 unit/regression tests and 119 mocked-provider HTTP checks passed locally on Windows; production build and lint passed. Real microphone, paid provider credentials and enterprise policy combinations require environment-specific testing.
+
 # Chloe Assistant — Sürüm Geçmişi ve Devir Notları
 
 > **Bu dosya, farklı yapay zekâ modelleri/araçları arasında devir teslim içindir.**

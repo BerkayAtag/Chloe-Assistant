@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
@@ -8,6 +8,7 @@ import {
   contentHash,
   listWorkspaceEntries,
   readWorkspaceFile,
+  resolveTarget,
   resolveWorkspaceRoot,
   saveWorkspaceFile,
   WorkspaceError,
@@ -18,6 +19,16 @@ let workspace;
 let outside;
 // Windows needs Developer Mode or admin rights for file symlinks; symlink checks run only where one can be created.
 let hasSymlink = false;
+
+test('the real user home cannot be used as a workspace on Windows or Unix', () => {
+  assert.throws(() => resolveWorkspaceRoot(os.homedir()), WorkspaceError);
+});
+
+test('Windows device names, streams and normalized aliases are rejected', { skip: process.platform !== 'win32' }, () => {
+  for (const file of ['src/app.ts:secret', 'src/NUL', 'src/con.txt', 'src/COM1.log', 'src/LPT¹', '.env. /secret', 'src/app.ts.', 'src/app.ts ', 'C:relative']) {
+    assert.throws(() => resolveTarget(workspace, file, true), WorkspaceError, file);
+  }
+});
 
 before(() => {
   temporaryRoot = mkdtempSync(path.join(os.tmpdir(), 'chloe-code-workspace-'));
@@ -41,6 +52,7 @@ after(() => {
 });
 
 test('workspace listing excludes credentials, dependencies, and symbolic links', () => {
+  assert.equal(resolveWorkspaceRoot(workspace), realpathSync.native(workspace));
   const result = listWorkspaceEntries(workspace);
   const paths = result.entries.map((entry) => entry.path);
   assert.ok(paths.includes('src/app.ts'));

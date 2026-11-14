@@ -16,6 +16,8 @@ interface RunnableTask {
 }
 
 const runningWorkspaces = new Set<string>();
+const runningCommands = new Map<string, { runId: string; cancel: () => Promise<void> }>();
+const cancelledRuns = new Map<string, number>();
 const MAX_OUTPUT_BYTES = 160_000;
 const TIMEOUT_MS = 120_000;
 
@@ -81,6 +83,17 @@ export async function POST(request: Request) {
   try {
     const root = resolveWorkspaceRoot(input.workspace);
     if (input.task === 'list') return NextResponse.json({ tasks: availableTasks(root) });
+    const runId = typeof input.runId === 'string' && /^[a-zA-Z0-9-]{1,80}$/u.test(input.runId) ? input.runId : '';
+    for (const [id, expires] of cancelledRuns) if (expires < Date.now()) cancelledRuns.delete(id);
+    if (input.task === 'cancel') {
+      if (!runId) throw new WorkspaceError('İptal için işlem kimliği gerekli.');
+      if (cancelledRuns.size >= 500) cancelledRuns.delete(cancelledRuns.keys().next().value!);
+      cancelledRuns.set(runId, Date.now() + TIMEOUT_MS + 10_000);
+      const running = runningCommands.get(root);
+      if (running?.runId === runId) await running.cancel();
+      return NextResponse.json({ cancelled: true });
+    }
+    if (runId && cancelledRuns.has(runId)) return NextResponse.json({ error: 'İşlem iptal edildi.' }, { status: 409 });
     const task = availableTasks(root).find((available) => available.id === input.task);
     if (!task) {
       throw new WorkspaceError('Bu proje için seçilen kontrol komutu kullanılamıyor.');
@@ -89,6 +102,7 @@ export async function POST(request: Request) {
     if (request.signal.aborted) return NextResponse.json({ error: 'İstek iptal edildi.' }, { status: 408 });
 
     const executable = task.executable;
+    let cancelled = false;
     runningWorkspaces.add(root);
     try {
       const result = await new Promise<{ output: string; exitCode: number | null; timedOut: boolean; truncated: boolean }>((resolve, reject) => {
@@ -114,18 +128,28 @@ export async function POST(request: Request) {
             npm_config_fund: 'false',
           },
           shell: false,
+          windowsHide: true,
           detached: process.platform !== 'win32',
           stdio: 'pipe',
         });
         child.stdin.end();
         let escalation: ReturnType<typeof setTimeout> | undefined;
+        let stopping = false;
         const stop = () => {
+          if (stopping) return;
+          stopping = true;
           if (child.pid && process.platform !== 'win32') terminateGroup(child.pid, 'SIGTERM');
           // Windows has no process groups; taskkill /T also ends npm's child processes.
-          else if (child.pid && child.exitCode === null) spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' }).once('error', () => child.kill());
+          // Never kill npm separately while taskkill is enumerating descendants:
+          // doing so can orphan cmd.exe/node children and leave their pipes open.
+          else if (child.pid && child.exitCode === null) {
+            spawn(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe'),
+              ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
+              .once('error', () => child.kill());
+            return;
+          }
           escalation ||= setTimeout(() => {
             if (child.pid && process.platform !== 'win32') terminateGroup(child.pid, 'SIGKILL');
-            else if (child.exitCode === null) child.kill('SIGKILL');
           }, 2000);
           escalation.unref();
         };
@@ -151,6 +175,12 @@ export async function POST(request: Request) {
           stop();
         }, TIMEOUT_MS);
         const abort = stop;
+        runningCommands.set(root, { runId, cancel: () => new Promise<void>((done) => {
+          cancelled = true;
+          child.once('close', () => done());
+          child.once('error', () => done());
+          stop();
+        }) });
         child.once('error', (error) => {
           clearTimeout(timeout);
           clearTimeout(escalation);
@@ -169,10 +199,12 @@ export async function POST(request: Request) {
       });
       return NextResponse.json({
         ...result,
-        success: result.exitCode === 0 && !result.timedOut && !request.signal.aborted,
+        cancelled,
+        success: result.exitCode === 0 && !result.timedOut && !result.truncated && !cancelled && !request.signal.aborted,
       });
     } finally {
       runningWorkspaces.delete(root);
+      runningCommands.delete(root);
     }
   } catch (error) {
     const status = error instanceof WorkspaceError ? error.status : 400;

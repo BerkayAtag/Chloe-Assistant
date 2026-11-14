@@ -31,3 +31,13 @@ test('missing entries, oversized entries and non-ZIP data are rejected', () => {
   assert.throws(() => readZipEntry(archive, 'word/document.xml', 100), /sınırını/);
   assert.throws(() => readZipEntry(Buffer.from('not a zip file at all, definitely'), 'word/document.xml', 100), /ZIP/);
 });
+
+test('forged stored sizes and truncated ZIP entries cannot bypass read limits', () => {
+  const archive = zip([['word/document.xml', 'x'.repeat(4096), 0]]);
+  const central = archive.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
+  archive.writeUInt32LE(1, central + 24);
+  assert.throws(() => readZipEntry(archive, 'word/document.xml', 100), /sınırını/);
+  assert.throws(() => readZipEntry(archive, 'word/document.xml', 8192), /tutarsız/);
+  archive.writeUInt32LE(100000, central + 20);
+  assert.throws(() => readZipEntry(archive, 'word/document.xml', 8192), /bozuk/);
+});

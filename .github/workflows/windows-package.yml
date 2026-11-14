@@ -1,0 +1,33 @@
+name: Windows verified package
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, 'release/**']
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run lint
+      - name: Regression suite
+        shell: bash
+        run: node --experimental-strip-types --test script/*.test.mjs
+      - name: Build and smoke test bundled server
+        shell: pwsh
+        run: ./windows/build-setup.ps1
+      - name: Install, upgrade, uninstall and data preservation
+        shell: pwsh
+        run: ./windows/test-install.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chloe-windows-verified
+          path: dist/windows/*
+          if-no-files-found: error

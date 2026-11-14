@@ -29,23 +29,23 @@ export const COMMAND_PATTERNS: Array<{
   entities?: string[];
   confidence: number;
 }> = [
-  { intent: 'open_app', pattern: /(?:ac|open|launch)\s+(.+?)(?:\s+(?:ac|mukemmel|simdi))?$/i, entities: ['target'], confidence: 0.9 },
+  { intent: 'open_app', pattern: /^(?:a[cç]|open|launch)\s+(.+?)(?:\s+(?:a[cç]|m[uü]kemmel|[sş]imdi))?$/i, entities: ['target'], confidence: 0.9 },
   { intent: 'open_browser', pattern: /\b(?:open|visit)\s+(?:https?:\/\/)?([a-z0-9-]+\.[a-z]{2,})\b|^\s*git\s+(github\.com|\w+\.\w+)\s*$/i, entities: ['url'], confidence: 0.95 },
   { intent: 'code_start', pattern: /(?:kod yaz|kodlama yap|coding start|write code|code mode|developer mode)/i, confidence: 0.9 },
   { intent: 'team_start', pattern: /(?:ajan|ekip kalk|kadro|team start)/i, confidence: 0.9 },
-  { intent: 'team_stop', pattern: /(?:ekibi durdur|durdur|kanal)/i, confidence: 0.85 },
-  { intent: 'search', pattern: /(?:(?:arastir|search|ara|bul)\s+(.+)|(.+)\s+(?:arastir|search|ara|bul))/i, entities: ['query'], confidence: 0.85 },
+  { intent: 'team_stop', pattern: /(?:ekibi durdur|durdur)/i, confidence: 0.96 },
+  { intent: 'search', pattern: /^(?:(?:ara[sş]t[ıi]r|search|ara|bul)\s+(.+)|(.+)\s+(?:ara[sş]t[ıi]r|search|ara|bul))$/i, entities: ['query'], confidence: 0.85 },
   { intent: 'report', pattern: /(?:rapor|report|durum raporu|raporu oku)/i, confidence: 0.8 },
-  { intent: 'dictation_start', pattern: /(?:konus|basla|dictate|dikte|kayd|record|dictation)/i, confidence: 0.75 },
-  { intent: 'dictation_stop', pattern: /(?:bitir|finish|kapat|pause|^\s*dur\s*$)/i, confidence: 0.75 },
+  { intent: 'dictation_start', pattern: /(?:konu[sş]|ba[sş]la|dictate|dikte|kayd|record|dictation)/i, confidence: 0.75 },
+  { intent: 'dictation_stop', pattern: /(?:bitir|finish|kapat|pause|^\s*dur\s*$)/i, confidence: 0.8 },
   { intent: 'file_edit', pattern: /(?:duzenle|edit|modify|change)/i, entities: ['target'], confidence: 0.85 },
   { intent: 'play_pause', pattern: /(?:oynat|play|pause|muzik|music)/i, confidence: 0.7 },
   { intent: 'volume', pattern: /(?:ses|volume|increase|decrease).*(?:yukselt|azalt|up|down)/i, confidence: 0.7 }
 ];
 
 const CLARIFICATIONS: Record<string, string> = {
-  open_app: 'Hangi uygulamayı açmamı istersein?',
-  open_browser: 'Hangi web sitesine gitmemi isterin?',
+  open_app: 'Hangi uygulamayı açmamı istersin?',
+  open_browser: 'Hangi web sitesine gitmemi istersin?',
   search: 'Ne araştırmamı istersin?',
   file_edit: 'Hangi dosyayı düzenlemeliyim?',
 };
