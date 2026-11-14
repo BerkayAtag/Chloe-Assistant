@@ -46,8 +46,10 @@ try {
   const run = await post('/api/codex/command', { task: 'test', workspace: root });
   check('actual project test executes successfully', run.success && run.output.includes('CODEX_API_OK'));
   const controller = new AbortController();
-  const pending = post('/api/codex/command', { task: 'test:wait', workspace: root }, controller.signal).catch(() => null);
+  const runId = crypto.randomUUID();
+  const pending = post('/api/codex/command', { task: 'test:wait', workspace: root, runId }, controller.signal).catch(() => null);
   await new Promise((resolve) => setTimeout(resolve, 500));
+  check('explicit cancellation accepted', (await post('/api/codex/command', { task: 'cancel', workspace: root, runId })).cancelled);
   controller.abort(); await pending;
   let stopped = false;
   for (let i = 0; i < 20; i++) {
@@ -73,6 +75,6 @@ try {
   check('OAuth rejects malformed email before contacting provider', malformedEmail.status === 400);
 } finally {
   model.closeAllConnections(); await new Promise((resolve) => model.close(resolve));
-  await fs.rm(root, { recursive: true, force: true });
+  await fs.rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
 }
 console.log(`TOTAL ${checks} passed; isolated test project removed.`);

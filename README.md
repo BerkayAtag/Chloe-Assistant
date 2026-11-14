@@ -10,12 +10,12 @@
 [![TypeScript 5](https://img.shields.io/badge/TypeScript-5.0-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22C55E?style=for-the-badge)](LICENSE)
 [![Local-First](https://img.shields.io/badge/Security-Local--First%20%26%20Encrypted-10B981?style=for-the-badge&logo=shield&logoColor=white)](#guvenlik)
-[![Release v0.3.0](https://img.shields.io/badge/Release-v0.3.0-8B5CF6?style=for-the-badge&logo=github)](https://github.com/BerkayAtag/Chloe-Assistant/releases/tag/v0.3.0)
+[![Release v0.3.1](https://img.shields.io/badge/Release-v0.3.1-8B5CF6?style=for-the-badge&logo=github)](https://github.com/BerkayAtag/Chloe-Assistant/releases/tag/v0.3.1)
 
 <br/>
 
 **[🌐 Tanıtım sayfası](https://berkayatag.github.io/Chloe-Assistant/)** ·
-**[📦 İndir (v0.3.0 · Windows setup + macOS)](https://github.com/BerkayAtag/Chloe-Assistant/releases/tag/v0.3.0)** ·
+**[📦 İndir (v0.3.1 · Windows setup + macOS)](https://github.com/BerkayAtag/Chloe-Assistant/releases/tag/v0.3.1)** ·
 **[🚀 Hızlı Kurulum](#kurulum)** ·
 **[🎙️ JARVIS & Ses](#jarvis)** ·
 **[👥 Ajan Ofisi](#ajan-ofisi)** ·
@@ -33,6 +33,10 @@
 </div>
 
 ---
+
+## v0.3.1 · Windows kararlılık güncellemesi
+
+Windows başlatıcı yaşam döngüsü, güvenli proje yolları, Türkçe durdurma komutları ve Word belge okuma kontrolleri iyileştirildi. Releases içinde kurulumun yanında Node.js içeren **Chloe.Server-0.3.1-win-x64.zip** ve SHA-256 dosyası bulunur. ZIP’i çıkarıp **Start-Server.cmd** çalıştırın; varsayılan adres **http://127.0.0.1:3004**. Sunucu yerel kullanım içindir. Windows 10/11 x64 hedeflenir; mikrofon, sürücü ve sağlayıcı uyumluluğu kullanılan ortama bağlıdır.
 
 ## 🌟 Öne Çıkan Özellikler
 
@@ -147,7 +151,7 @@ JARVIS modunu açtığınızda hem konuşabilir hem de tüm yönetim ve kodlama 
 <a id="windows"></a>
 ### Windows 10 / 11 (x64)
 
-👉 **[Chloe.Assistant.Setup-0.3.0.exe](https://github.com/BerkayAtag/Chloe-Assistant/releases/download/v0.3.0/Chloe.Assistant.Setup-0.3.0.exe)** dosyasını indirip çalıştırın.
+👉 **[Chloe.Assistant.Setup-0.3.1.exe](https://github.com/BerkayAtag/Chloe-Assistant/releases/download/v0.3.1/Chloe.Assistant.Setup-0.3.1.exe)** dosyasını indirip çalıştırın.
 
 - Kullanıcı başına kurulur (`%LOCALAPPDATA%\Programs\Chloe Assistant`), yönetici izni gerekmez. Node.js ve diğer bileşenler pakete dahildir.
 - **Başlat → Chloe Assistant** yerel sunucuyu `http://127.0.0.1:3004` adresinde başlatır ve uygulamayı kendi Edge uygulama penceresinde açar. Pencere kapanınca sunucu da kapanır.
@@ -159,7 +163,7 @@ JARVIS modunu açtığınızda hem konuşabilir hem de tüm yönetim ve kodlama 
 <a id="macos"></a>
 ### macOS 15+ (Apple Silicon)
 
-👉 **[Chloe-Assistant-0.3.0-macOS-arm64.dmg](https://github.com/BerkayAtag/Chloe-Assistant/releases/download/v0.3.0/Chloe-Assistant-0.3.0-macOS-arm64.dmg)** dosyasını açın ve **Chloe**'yi **Applications** klasörüne sürükleyin.
+👉 **[Chloe-Assistant-0.3.1-macOS-arm64.dmg](https://github.com/BerkayAtag/Chloe-Assistant/releases/download/v0.3.1/Chloe-Assistant-0.3.1-macOS-arm64.dmg)** dosyasını açın ve **Chloe**'yi **Applications** klasörüne sürükleyin.
 
 - Uygulama kendi Node.js'ini ve yerel sunucusunu içerir; Node.js, Xcode veya kaynak klasörü gerekmez.
 - Uygulama ad-hoc imzalıdır, Apple noter onayı yoktur. İlk açılışta Finder'da **Chloe'ye sağ tıklayıp Aç** deyin (veya Sistem Ayarları → Gizlilik ve Güvenlik → Yine de Aç).
@@ -186,7 +190,7 @@ macOS derlemesi tamamlandığında **Finder → Uygulamalar → Chloe** açılar
 
 ## 🧪 Test & Kalite Güvencesi
 
-30 Ekim (v0.3.0) kontrolü: **247 birim/regresyon testinden 246'sı geçti** (kalan 1 test canlı internet ister) + **117 izole API kontrolü** (Jarvis 15, anahtar/ses 28, Codex 15, Ofis 42, Atölye 17) Windows kurulum paketindeki sunucuyla geçti. macOS DMG, GitHub Actions Apple Silicon makinesinde derlenip paketlenmiş sunucu ve açılan uygulama ile denendi. Gerçek FreeLLMAPI bağlantısıyla Ayarlar (bağlantı testi, model listesi, sağlık), sohbet, Ajan Ofisi ve JARVIS sesli tur denendi. Canlı model yanıtı deterministik değildir; eksik veya kesilmiş çıktı başarı sayılmaz.
+30 Ekim (v0.3.1) kontrolü: **247 birim/regresyon testinden 246'sı geçti** (kalan 1 test canlı internet ister) + **117 izole API kontrolü** (Jarvis 15, anahtar/ses 28, Codex 15, Ofis 42, Atölye 17) Windows kurulum paketindeki sunucuyla geçti. macOS DMG, GitHub Actions Apple Silicon makinesinde derlenip paketlenmiş sunucu ve açılan uygulama ile denendi. Gerçek FreeLLMAPI bağlantısıyla Ayarlar (bağlantı testi, model listesi, sağlık), sohbet, Ajan Ofisi ve JARVIS sesli tur denendi. Canlı model yanıtı deterministik değildir; eksik veya kesilmiş çıktı başarı sayılmaz.
 
 ```bash
 # Çekirdek testler (Runtime, Voice UI, JARVIS, Bağlantılar, Skills, Codex, Workbench)

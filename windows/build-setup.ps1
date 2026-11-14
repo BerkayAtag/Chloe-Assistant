@@ -67,6 +67,14 @@ try {
   $errors = Get-Content $log, "$log.err" -ErrorAction SilentlyContinue | Select-String 'Cannot find module|Failed to load'
   if ($errors) { $failures += $errors | ForEach-Object { $_.Line } }
   if ($failures) { throw ("Paket denemesi başarısız:`n" + ($failures -join "`n")) }
+  $env:CHLOE_TEST_URL = $base
+  $env:CHLOE_OFFICE_DIR = "$smoke\office"
+  try {
+    foreach ($suite in 'jarvis-api-qa', 'jarvis-key-qa', 'codex-api-qa', 'workbench-api-qa', 'office-qa') {
+      & $node (Join-Path $root "script\$suite.mjs")
+      if ($LASTEXITCODE -ne 0) { throw "API doğrulaması başarısız: $suite" }
+    }
+  } finally { Remove-Item Env:CHLOE_TEST_URL, Env:CHLOE_OFFICE_DIR -ErrorAction SilentlyContinue }
 } finally {
   Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
   Start-Sleep -Milliseconds 500

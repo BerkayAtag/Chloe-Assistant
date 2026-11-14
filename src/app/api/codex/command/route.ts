@@ -16,6 +16,8 @@ interface RunnableTask {
 }
 
 const runningWorkspaces = new Set<string>();
+const runningCommands = new Map<string, { runId: string; cancel: () => void }>();
+const cancelledRuns = new Map<string, number>();
 const MAX_OUTPUT_BYTES = 160_000;
 const TIMEOUT_MS = 120_000;
 
@@ -81,6 +83,17 @@ export async function POST(request: Request) {
   try {
     const root = resolveWorkspaceRoot(input.workspace);
     if (input.task === 'list') return NextResponse.json({ tasks: availableTasks(root) });
+    const runId = typeof input.runId === 'string' && /^[a-zA-Z0-9-]{1,80}$/u.test(input.runId) ? input.runId : '';
+    for (const [id, expires] of cancelledRuns) if (expires < Date.now()) cancelledRuns.delete(id);
+    if (input.task === 'cancel') {
+      if (!runId) throw new WorkspaceError('İptal için işlem kimliği gerekli.');
+      if (cancelledRuns.size >= 500) cancelledRuns.delete(cancelledRuns.keys().next().value!);
+      cancelledRuns.set(runId, Date.now() + TIMEOUT_MS + 10_000);
+      const running = runningCommands.get(root);
+      if (running?.runId === runId) running.cancel();
+      return NextResponse.json({ cancelled: true });
+    }
+    if (runId && cancelledRuns.has(runId)) return NextResponse.json({ error: 'İşlem iptal edildi.' }, { status: 409 });
     const task = availableTasks(root).find((available) => available.id === input.task);
     if (!task) {
       throw new WorkspaceError('Bu proje için seçilen kontrol komutu kullanılamıyor.');
@@ -89,6 +102,7 @@ export async function POST(request: Request) {
     if (request.signal.aborted) return NextResponse.json({ error: 'İstek iptal edildi.' }, { status: 408 });
 
     const executable = task.executable;
+    let cancelled = false;
     runningWorkspaces.add(root);
     try {
       const result = await new Promise<{ output: string; exitCode: number | null; timedOut: boolean; truncated: boolean }>((resolve, reject) => {
@@ -152,6 +166,7 @@ export async function POST(request: Request) {
           stop();
         }, TIMEOUT_MS);
         const abort = stop;
+        runningCommands.set(root, { runId, cancel: () => { cancelled = true; stop(); } });
         child.once('error', (error) => {
           clearTimeout(timeout);
           clearTimeout(escalation);
@@ -170,10 +185,12 @@ export async function POST(request: Request) {
       });
       return NextResponse.json({
         ...result,
-        success: result.exitCode === 0 && !result.timedOut && !result.truncated && !request.signal.aborted,
+        cancelled,
+        success: result.exitCode === 0 && !result.timedOut && !result.truncated && !cancelled && !request.signal.aborted,
       });
     } finally {
       runningWorkspaces.delete(root);
+      runningCommands.delete(root);
     }
   } catch (error) {
     const status = error instanceof WorkspaceError ? error.status : 400;

@@ -13,9 +13,9 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const { title } = await req.json();
-    const conversation = createConversation(title || 'Yeni Sohbet');
+    const conversation = createConversation(title ?? 'Yeni Sohbet');
     return NextResponse.json({ success: true, data: conversation });
   } catch (error: unknown) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Bilinmeyen hata' }, { status: 500 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Bilinmeyen hata' }, { status: error instanceof TypeError || error instanceof SyntaxError ? 400 : 500 });
   }
 }

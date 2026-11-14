@@ -91,12 +91,22 @@ export default function CodeWorkspace({ settings, onClose, onOpenSettings, onOpe
   const request = useCallback(async <T,>(url: string, body: unknown, timeout = 20_000): Promise<T> => {
     const controller = new AbortController();
     activeRequest.current = controller;
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(timeout)]);
+    const command = url === '/api/codex/command' ? body as { task: string; workspace: string } : null;
+    const runId = command && command.task !== 'list' ? crypto.randomUUID() : '';
+    const cancelCommand = () => {
+      if (runId && command) void fetch('/api/codex/command', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+        body: JSON.stringify({ task: 'cancel', workspace: command.workspace, runId }),
+      }).catch(() => { /* The server also enforces its hard timeout. */ });
+    };
+    signal.addEventListener('abort', cancelCommand, { once: true });
     try {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(timeout)]),
+      body: JSON.stringify(runId ? { ...command, runId } : body),
+      signal,
     });
     const data = await response.json() as T & { error?: string };
     if (!response.ok) throw new Error(data.error || `İstek başarısız oldu (${response.status}).`);
@@ -104,7 +114,10 @@ export default function CodeWorkspace({ settings, onClose, onOpenSettings, onOpe
     } catch (error) {
       if (controller.signal.aborted) throw new Error('İşlem durduruldu. Çalışmış proje komutlarının etkileri otomatik geri alınmaz.');
       throw error;
-    } finally { if (activeRequest.current === controller) activeRequest.current = null; }
+    } finally {
+      signal.removeEventListener('abort', cancelCommand);
+      if (activeRequest.current === controller) activeRequest.current = null;
+    }
   }, []);
 
   useEffect(() => () => { activeRequest.current?.abort(); }, []);
@@ -365,7 +378,7 @@ export default function CodeWorkspace({ settings, onClose, onOpenSettings, onOpe
           />
           <button type="button" disabled={busy !== ''} onClick={() => {
             if (!sendNativeAction('chooseWorkspace', {})) setError('Web sürümünde klasör yolunu yazıp Projeyi aç düğmesine bas.');
-          }} title="macOS Finder ile proje klasörü seç"><FolderOpen size={15} /><span>Klasör seç</span></button>
+          }} title="Sistem penceresinden proje klasörü seç"><FolderOpen size={15} /><span>Klasör seç</span></button>
           <button type="button" className="code-primary" aria-label="Projeyi aç" disabled={busy !== ''} onClick={() => void refreshWorkspace()}>
             {busy === 'workspace' ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
             <span>Projeyi aç</span>
@@ -377,7 +390,7 @@ export default function CodeWorkspace({ settings, onClose, onOpenSettings, onOpe
       <div className="code-body">
         <aside className="code-sidebar">
           <div className="code-sidebar-heading">
-            <div><span>PROJE DOSYALARI</span><strong title={workspace}>{workspace ? workspace.split('/').filter(Boolean).at(-1) : 'Proje seçilmedi'}</strong></div>
+            <div><span>PROJE DOSYALARI</span><strong title={workspace}>{workspace ? workspace.split(/[\\/]/u).filter(Boolean).at(-1) : 'Proje seçilmedi'}</strong></div>
             <button type="button" className="code-icon-button" disabled={!workspace || busy !== ''} onClick={createFile} title="Yeni dosya"><FilePlus2 size={16} /></button>
           </div>
           {workspace ? (

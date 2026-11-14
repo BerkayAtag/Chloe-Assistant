@@ -14,7 +14,7 @@ export async function GET(
 
     return Response.json({ success: true, data: conversation });
   } catch (error: unknown) {
-    return Response.json({ error: error instanceof Error ? error.message : 'Bilinmeyen hata' }, { status: 500 });
+    return Response.json({ error: error instanceof Error ? error.message : 'Bilinmeyen hata' }, { status: error instanceof TypeError || error instanceof SyntaxError ? 400 : 500 });
   }
 }
 
@@ -31,7 +31,7 @@ export async function PATCH(
     }
     return Response.json({ success: true, data: conversation });
   } catch (error: unknown) {
-    return Response.json({ error: error instanceof Error ? error.message : 'Bilinmeyen hata' }, { status: 500 });
+    return Response.json({ error: error instanceof Error ? error.message : 'Bilinmeyen hata' }, { status: error instanceof TypeError || error instanceof SyntaxError ? 400 : 500 });
   }
 }
 

@@ -64,11 +64,12 @@ export function getConversation(id: string): Conversation | null {
 }
 
 export function createConversation(title: string): Conversation {
+  if (typeof title !== 'string' || title.length > 300) throw new TypeError('Sohbet başlığı en fazla 300 karakterlik metin olmalı.');
   const convs = readConversations();
   const now = new Date().toISOString();
   const conv: Conversation = {
     id: generateId(),
-    title,
+    title: title.trim() || 'Yeni Sohbet',
     createdAt: now,
     updatedAt: now,
     messages: []
@@ -96,6 +97,7 @@ export function addMessage(conversationId: string, role: 'user' | 'assistant', c
 }
 
 export function renameConversation(id: string, title: string): Conversation | null {
+  if (typeof title !== 'string' || !title.trim() || title.length > 300) throw new TypeError('Sohbet başlığı 1–300 karakterlik metin olmalı.');
   const convs = readConversations();
   const conv = convs.find(c => c.id === id);
   if (!conv) return null;
